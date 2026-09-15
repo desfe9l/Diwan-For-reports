@@ -1,8 +1,9 @@
 import { toast } from "sonner";
 import { downloadBlob, downloadText } from "@/lib/utils";
-import { A4, cssFont, parseTable, type CanvasEl, type Page, type Project } from "./model";
+import { BRAND } from "@/lib/brand";
+import { cssFont, pageSize, parseTable, type CanvasEl, type Page, type Project } from "./model";
 
-export type ExportFormat = "pdf" | "pptx" | "docx" | "png" | "html" | "json";
+export type ExportFormat = "pdf" | "pptx" | "docx" | "png" | "jpg" | "html" | "json";
 
 function waitFrame() {
   return new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
@@ -24,21 +25,55 @@ async function waitImages(root: HTMLElement) {
   );
 }
 
+/** Every distinct family/size currently painted inside the page, so the
+ *  rasteriser can force each one to load before it snapshots. */
+async function ensureFonts(root: HTMLElement) {
+  if (!document.fonts) return;
+  const specs = new Set<string>();
+  root.querySelectorAll<HTMLElement>("*").forEach((el) => {
+    const cs = getComputedStyle(el);
+    if (!cs.fontFamily) return;
+    const size = parseFloat(cs.fontSize) || 14;
+    const weight = cs.fontWeight || "400";
+    cs.fontFamily.split(",").forEach((family) => {
+      const clean = family.trim().replace(/^["']|["']$/g, "");
+      if (clean) specs.add(`${weight} ${size}px "${clean}"`);
+    });
+  });
+  await Promise.all(
+    [...specs].map((spec) => document.fonts.load(spec).catch(() => undefined)),
+  );
+  await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 3000))]);
+}
+
+export interface CapturedPage {
+  canvas: HTMLCanvasElement;
+  /** Page size in mm, so writers never assume A4. */
+  w: number;
+  h: number;
+}
+
+/**
+ * Rasterise the hidden 1:1 desktop pages.
+ *
+ * `delayMs` is offered as an escape hatch for very heavy documents: a short
+ * pause between pages lets the main thread breathe so the dialog stays
+ * responsive and the browser does not drop the file handle.
+ */
 export async function capturePages(
-  nodes: HTMLElement[],
+  targets: { node: HTMLElement; w: number; h: number }[],
   scale: number,
   onProgress?: (i: number, n: number) => void,
-): Promise<HTMLCanvasElement[]> {
+  delayMs = 30,
+): Promise<CapturedPage[]> {
   const html2canvas = (await import("html2canvas")).default;
-  const out: HTMLCanvasElement[] = [];
-  for (let i = 0; i < nodes.length; i++) {
-    onProgress?.(i, nodes.length);
-    const node = nodes[i];
+  const out: CapturedPage[] = [];
+  for (let i = 0; i < targets.length; i++) {
+    const { node, w, h } = targets[i];
+    onProgress?.(i, targets.length);
     await waitFrame();
     await waitImages(node);
-    if (document.fonts?.ready) {
-      await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1500))]);
-    }
+    await ensureFonts(node);
     const canvas = await html2canvas(node, {
       scale,
       useCORS: true,
@@ -50,33 +85,35 @@ export async function capturePages(
       windowWidth: node.offsetWidth,
       windowHeight: node.offsetHeight,
     });
-    out.push(canvas);
+    out.push({ canvas, w, h });
+    if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
   }
   return out;
 }
 
-export async function exportPdf(canvases: HTMLCanvasElement[], name: string) {
+/** Highest-quality JPEG payload for a canvas (print-safe at 1.0). */
+function jpegData(canvas: HTMLCanvasElement, quality = 0.94) {
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
+export async function exportPdf(pages: CapturedPage[], name: string) {
   const { jsPDF } = await import("jspdf");
-  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
-  canvases.forEach((c, i) => {
-    if (i > 0) pdf.addPage("a4", "portrait");
-    pdf.addImage(c.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, A4.w, A4.h, undefined, "FAST");
+  const pdf = new jsPDF({
+    orientation: pages[0].w > pages[0].h ? "landscape" : "portrait",
+    unit: "mm",
+    format: [pages[0].w, pages[0].h],
+    compress: true,
+  });
+  pages.forEach((p, i) => {
+    const orientation = p.w > p.h ? "landscape" : "portrait";
+    if (i > 0) pdf.addPage([p.w, p.h], orientation);
+    pdf.addImage(jpegData(p.canvas), "JPEG", 0, 0, p.w, p.h, undefined, "FAST");
   });
   pdf.save(`${name}.pdf`);
 }
 
-export async function exportPptx(canvases: HTMLCanvasElement[], name: string) {
-  const mod = (await import("pptxgenjs")) as unknown as { default: new () => PptxWriter };
-  const pptx = new mod.default();
-  pptx.defineLayout({ name: "A4", width: 8.27, height: 11.69 });
-  pptx.layout = "A4";
-  pptx.author = "ديوان التقارير";
-  pptx.title = name;
-  canvases.forEach((c) => {
-    const slide = pptx.addSlide();
-    slide.addImage({ data: c.toDataURL("image/jpeg", 0.92), x: 0, y: 0, w: 8.27, h: 11.69 });
-  });
-  await pptx.writeFile({ fileName: `${name}.pptx` });
+interface PptxSlider {
+  addImage: (o: { data: string; x: number; y: number; w: number; h: number }) => void;
 }
 
 interface PptxWriter {
@@ -84,26 +121,47 @@ interface PptxWriter {
   layout: string;
   author: string;
   title: string;
-  addSlide: () => { addImage: (o: { data: string; x: number; y: number; w: number; h: number }) => void };
+  addSlide: () => PptxSlider;
   writeFile: (o: { fileName: string }) => Promise<unknown>;
 }
 
-export async function exportDocx(canvases: HTMLCanvasElement[], name: string) {
+export async function exportPptx(pages: CapturedPage[], name: string) {
+  const mod = (await import("pptxgenjs")) as unknown as { default: new () => PptxWriter };
+  const pptx = new mod.default();
+  // PowerPoint measures inches: 1 mm = 25.4 in.
+  const inches = (mm: number) => mm / 25.4;
+  const layoutName = "ReportPage";
+  const first = pages[0];
+  pptx.defineLayout({ name: layoutName, width: inches(first.w), height: inches(first.h) });
+  pptx.layout = layoutName;
+  pptx.author = BRAND.owner;
+  pptx.title = name;
+  pages.forEach((p) => {
+    const slide = pptx.addSlide();
+    slide.addImage({ data: jpegData(p.canvas), x: 0, y: 0, w: inches(p.w), h: inches(p.h) });
+  });
+  await pptx.writeFile({ fileName: `${name}.pptx` });
+}
+
+export async function exportDocx(pages: CapturedPage[], name: string) {
   const docx = await import("docx");
   const { Document, Packer, Paragraph, ImageRun } = docx;
-  const mm = (docx as { convertMillimetersToTwip?: (n: number) => number }).convertMillimetersToTwip
+  const mmToTwip = (docx as { convertMillimetersToTwip?: (n: number) => number })
+    .convertMillimetersToTwip
     ? (n: number) => (docx as { convertMillimetersToTwip: (n: number) => number }).convertMillimetersToTwip(n)
     : (n: number) => Math.round(n * 56.7);
 
   const sections = await Promise.all(
-    canvases.map(async (c) => {
-      const dataUrl = c.toDataURL("image/jpeg", 0.92);
+    pages.map(async (p) => {
+      const dataUrl = jpegData(p.canvas);
       const buf = await (await fetch(dataUrl)).arrayBuffer();
+      // Word sizes images in CSS points: 1 mm ≈ 2.8346 pt on screen.
+      const px = (mm: number) => Math.round((mm / 25.4) * 96);
       return {
         properties: {
           page: {
-            size: { width: mm(210), height: mm(297) },
-            margin: { top: mm(0), right: mm(0), bottom: mm(0), left: mm(0) },
+            size: { width: mmToTwip(p.w), height: mmToTwip(p.h) },
+            margin: { top: mmToTwip(0), right: mmToTwip(0), bottom: mmToTwip(0), left: mmToTwip(0) },
           },
         },
         children: [
@@ -113,7 +171,7 @@ export async function exportDocx(canvases: HTMLCanvasElement[], name: string) {
               new ImageRun({
                 type: "jpg",
                 data: buf,
-                transformation: { width: 794, height: 1123 },
+                transformation: { width: px(p.w), height: px(p.h) },
               }),
             ],
           }),
@@ -121,35 +179,29 @@ export async function exportDocx(canvases: HTMLCanvasElement[], name: string) {
       };
     }),
   );
-  const doc = new Document({
-    creator: "ديوان التقارير",
-    title: name,
-    sections,
-  });
+  const doc = new Document({ creator: BRAND.owner, title: name, sections });
   const blob = await Packer.toBlob(doc);
   downloadBlob(blob, `${name}.docx`);
 }
 
-export async function exportPngZip(canvases: HTMLCanvasElement[], name: string) {
-  if (canvases.length === 1) {
-    canvases[0].toBlob((blob) => {
-      if (blob) downloadBlob(blob, `${name}.png`);
-    }, "image/png");
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number) {
+  return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+export async function exportImages(pages: CapturedPage[], name: string, type: "png" | "jpg") {
+  const mime = type === "png" ? "image/png" : "image/jpeg";
+  const ext = type === "png" ? "png" : "jpg";
+  if (pages.length === 1) {
+    const blob = await canvasToBlob(pages[0].canvas, mime, type === "jpg" ? 0.95 : undefined);
+    if (blob) downloadBlob(blob, `${name}.${ext}`);
     return;
   }
   const JSZip = (await import("jszip")).default;
   const zip = new JSZip();
-  await Promise.all(
-    canvases.map(
-      (c, i) =>
-        new Promise<void>((res) => {
-          c.toBlob((blob) => {
-            if (blob) zip.file(`${name}-p${String(i + 1).padStart(2, "0")}.png`, blob);
-            res();
-          }, "image/png");
-        }),
-    ),
-  );
+  for (let i = 0; i < pages.length; i++) {
+    const blob = await canvasToBlob(pages[i].canvas, mime, type === "jpg" ? 0.95 : undefined);
+    if (blob) zip.file(`${name}-p${String(i + 1).padStart(2, "0")}.${ext}`, blob);
+  }
   const out = await zip.generateAsync({ type: "blob" });
   downloadBlob(out, `${name}-pages.zip`);
 }
@@ -169,57 +221,109 @@ function formatMultiline(text: string) {
   return esc(text).replace(/\n/g, "<br/>");
 }
 
+/** Only allow values that are safe inside a CSS declaration. */
+function cssColor(v: string | undefined, fallback: string) {
+  if (!v) return fallback;
+  const value = String(v).trim();
+  if (/^#[0-9a-f]{3,8}$/i.test(value)) return value;
+  if (/^(rgb|rgba|hsl|hsla)\([0-9.,%\s/]+\)$/i.test(value)) return value;
+  if (/^[a-z]+$/i.test(value)) return value;
+  return fallback;
+}
+
+/**
+ * Exported HTML is a standalone document that the user may open, host or email,
+ * and its element data can arrive from an imported `.json` file. Every value
+ * interpolated into that document is therefore treated as untrusted: numbers are
+ * coerced, keyword/enum values are whitelisted, and anything unrecognised falls
+ * back to a safe default rather than reaching the markup — a crafted style value
+ * would otherwise break out of the attribute and inject script.
+ */
+function num(v: unknown, fallback: number, min = -1e6, max = 1e6) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+/** Whitelisted CSS keyword (alignment, object-fit, font style, …). */
+function cssKeyword(v: unknown, allowed: readonly string[], fallback: string) {
+  const value = String(v ?? "").trim().toLowerCase();
+  return allowed.includes(value) ? value : fallback;
+}
+
+const TEXT_ALIGN = ["right", "left", "center", "justify", "start", "end"] as const;
+const OBJECT_FIT = ["cover", "contain", "fill", "none", "scale-down"] as const;
+const FONT_STYLE = ["normal", "italic", "oblique"] as const;
+
 function elHtml(el: CanvasEl): string {
   const s = el.style || {};
   const wrap = (inner: string) =>
-    `<div class="el" style="left:${el.x}mm;top:${el.y}mm;width:${el.w}mm;height:${el.h}mm;transform:rotate(${el.rotation || 0}deg);opacity:${el.opacity ?? 1};z-index:${el.z}">${inner}</div>`;
+    `<div class="el" style="left:${num(el.x, 0, -1e4, 1e4)}mm;top:${num(el.y, 0, -1e4, 1e4)}mm;width:${num(el.w, 40, 0, 1e4)}mm;height:${num(el.h, 20, 0, 1e4)}mm;transform:rotate(${num(el.rotation, 0, -3600, 3600)}deg);opacity:${num(el.opacity, 1, 0, 1)};z-index:${num(el.z, 1, -1e4, 1e4)};box-shadow:${esc(s.shadow || "none")}">${inner}</div>`;
 
   if (el.hidden) return "";
   if (el.type === "text") {
     return wrap(
-      `<div class="text" style="font-family:${cssFont(s.fontFamily)};font-size:${s.fontSize || 14}pt;color:${s.color || "#172033"};font-weight:${s.fontWeight || 600};text-align:${s.textAlign || "right"};line-height:${s.lineHeight || 1.45};font-style:${s.fontStyle || "normal"}">${formatMultiline(el.content || "")}</div>`,
+      `<div class="text" style="font-family:${cssFont(s.fontFamily)};font-size:${num(s.fontSize, 14, 4, 400)}pt;color:${cssColor(s.color, "#172033")};font-weight:${num(s.fontWeight, 600, 100, 900)};text-align:${cssKeyword(s.textAlign, TEXT_ALIGN, "right")};line-height:${num(s.lineHeight, 1.45, 0.5, 5)};font-style:${cssKeyword(s.fontStyle, FONT_STYLE, "normal")};letter-spacing:${num(s.letterSpacing, 0, -10, 50)}mm">${formatMultiline(el.content || "")}</div>`,
     );
   }
   if (el.type === "box" || el.type === "stat") {
     return wrap(
-      `<div class="box" style="background:${s.fill || s.background || "#f7f8fb"};border:${s.borderWidth || 0.35}mm solid ${s.borderColor || "#d9dee8"};border-radius:${s.radius || 4}mm;padding:${s.padding ?? 4}mm;font-family:${cssFont(s.fontFamily)};font-size:${s.fontSize || 12}pt;color:${s.color || "#172033"};font-weight:${s.fontWeight || 600};text-align:${s.textAlign || "right"};line-height:${s.lineHeight || 1.5}">${formatMultiline(el.content || "")}</div>`,
+      `<div class="box" style="background:${cssColor(s.fill || s.background, "#f7f8fb")};border:${num(s.borderWidth, 0.35, 0, 50)}mm solid ${cssColor(s.borderColor, "#d9dee8")};border-radius:${num(s.radius, 4, 0, 500)}mm;padding:${num(s.padding, 4, 0, 200)}mm;font-family:${cssFont(s.fontFamily)};font-size:${num(s.fontSize, 12, 4, 400)}pt;color:${cssColor(s.color, "#172033")};font-weight:${num(s.fontWeight, 600, 100, 900)};text-align:${cssKeyword(s.textAlign, TEXT_ALIGN, "right")};line-height:${num(s.lineHeight, 1.5, 0.5, 5)}">${formatMultiline(el.content || "")}</div>`,
+    );
+  }
+  if (el.type === "progress") {
+    const value = num(s.value, 0, 0, 100);
+    return wrap(
+      `<div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;gap:1.4mm;direction:rtl;font-family:${cssFont(s.fontFamily)}">
+        <div style="display:flex;justify-content:space-between;font-size:${num(s.fontSize, 10, 4, 400)}pt;font-weight:${num(s.fontWeight, 700, 100, 900)};color:${cssColor(s.color, "#172033")}"><span>${formatMultiline(el.content || "")}</span><span>${value}%</span></div>
+        <div style="height:${Math.max(2, num(el.h, 16, 0, 1e4) * 0.28)}mm;background:${cssColor(s.background, "#e8ecf3")};border-radius:${num(s.radius, 3, 0, 500)}mm;overflow:hidden"><div style="width:${value}%;height:100%;background:${cssColor(s.fill, "#071d3d")}"></div></div>
+      </div>`,
     );
   }
   if (el.type === "shape") {
-    const radius = s.shape === "circle" ? "999mm" : `${s.radius || 0}mm`;
+    const radius =
+      cssKeyword(s.shape, ["circle"] as const, "") === "circle"
+        ? "999mm"
+        : `${num(s.radius, 0, 0, 500)}mm`;
     return wrap(
-      `<div style="width:100%;height:100%;background:${s.fill || "#071d3d"};border:${s.borderWidth || 0}mm solid ${s.borderColor || "transparent"};border-radius:${radius}"></div>`,
+      `<div style="width:100%;height:100%;background:${cssColor(s.fill, "#071d3d")};border:${num(s.borderWidth, 0, 0, 50)}mm solid ${cssColor(s.borderColor, "transparent")};border-radius:${radius}"></div>`,
     );
   }
   if (el.type === "line") {
-    const vertical = el.h > el.w;
+    const stroke = num(s.stroke, 0.8, 0.05, 50);
+    const vertical = num(el.h, 0) > num(el.w, 0);
     return wrap(
-      `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center"><div style="${vertical ? `width:${s.stroke || 0.8}mm;height:100%` : `height:${s.stroke || 0.8}mm;width:100%`};background:${s.color || "#c6a05a"}"></div></div>`,
+      `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center"><div style="${vertical ? `width:${stroke}mm;height:100%` : `height:${stroke}mm;width:100%`};background:${cssColor(s.color, "#c6a05a")}"></div></div>`,
     );
   }
   if (el.type === "divider") {
+    const stroke = num(s.stroke, 0.5, 0.05, 50);
     return wrap(
-      `<div style="width:100%;height:100%;display:flex;align-items:center;gap:6px"><span style="flex:1;height:${s.stroke || 0.5}mm;background:${s.color || "#c6a05a"}"></span><span style="width:4mm;height:4mm;border:0.45mm solid ${s.color || "#c6a05a"};transform:rotate(45deg)"></span><span style="flex:1;height:${s.stroke || 0.5}mm;background:${s.color || "#c6a05a"}"></span></div>`,
+      `<div style="width:100%;height:100%;display:flex;align-items:center;gap:6px"><span style="flex:1;height:${stroke}mm;background:${cssColor(s.color, "#c6a05a")}"></span><span style="width:4mm;height:4mm;border:0.45mm solid ${cssColor(s.color, "#c6a05a")};transform:rotate(45deg)"></span><span style="flex:1;height:${stroke}mm;background:${cssColor(s.color, "#c6a05a")}"></span></div>`,
     );
   }
   if (el.type === "image" || el.type === "logo" || el.type === "qr") {
+    const src = String(el.src || "");
+    const safeSrc = /^(data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\s]+|https?:\/\/|blob:)/i.test(src)
+      ? src
+      : "";
     return wrap(
-      `<img alt="" src="${esc(el.src || "")}" style="width:100%;height:100%;object-fit:${s.objectFit || "cover"};object-position:${s.objectX ?? 50}% ${s.objectY ?? 50}%;border-radius:${s.radius || 0}mm"/>`,
+      `<img alt="" src="${esc(safeSrc)}" style="width:100%;height:100%;object-fit:${cssKeyword(s.objectFit, OBJECT_FIT, "cover")};object-position:${num(s.objectX, 50, 0, 100)}% ${num(s.objectY, 50, 0, 100)}%;border-radius:${num(s.radius, 0, 0, 500)}mm"/>`,
     );
   }
   if (el.type === "icon") {
     return wrap(
-      `<div style="width:100%;height:100%;color:${s.color || "#c6a05a"};display:grid;place-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${s.stroke || 1.8}" stroke-linecap="round" stroke-linejoin="round" style="width:100%;height:100%"><path d="M12 3 14.8 9l6.2.7-4.6 4.2 1.2 6.1L12 16.8 6.4 20l1.2-6.1L3 9.7 9.2 9 12 3Z"/></svg></div>`,
+      `<div style="width:100%;height:100%;color:${cssColor(s.color, "#c6a05a")};display:grid;place-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${num(s.stroke, 1.8, 0.1, 20)}" stroke-linecap="round" stroke-linejoin="round" style="width:100%;height:100%"><path d="M12 3 14.8 9l6.2.7-4.6 4.2 1.2 6.1L12 16.8 6.4 20l1.2-6.1L3 9.7 9.2 9 12 3Z"/></svg></div>`,
     );
   }
   if (el.type === "stamp") {
     return wrap(
-      `<div style="width:100%;height:100%;border-radius:999px;border:0.7mm double ${s.borderColor || s.color || "#c6a05a"};color:${s.color || "#c6a05a"};display:grid;place-items:center;text-align:center;font-family:${cssFont(s.fontFamily || "Amiri")};font-weight:700;font-size:${s.fontSize || 12}pt;transform:rotate(-12deg)">${formatMultiline(el.content || "معتمد")}</div>`,
+      `<div style="width:100%;height:100%;border-radius:999px;border:0.7mm double ${cssColor(s.borderColor || s.color, "#c6a05a")};color:${cssColor(s.color, "#c6a05a")};display:grid;place-items:center;text-align:center;font-family:${cssFont(s.fontFamily || "Amiri")};font-weight:700;font-size:${num(s.fontSize, 12, 4, 400)}pt;transform:rotate(-12deg)">${formatMultiline(el.content || "معتمد")}</div>`,
     );
   }
   if (el.type === "table") {
-    const cols = s.cols || 3;
-    const rows = s.rows || 4;
+    const cols = num(s.cols, 3, 1, 60);
+    const rows = num(s.rows, 4, 1, 400);
     const data = parseTable(el.content, cols, rows);
     const cells = data
       .map((row, ri) => {
@@ -227,13 +331,13 @@ function elHtml(el: CanvasEl): string {
         return `<tr>${row
           .map(
             (c) =>
-              `<${tag} style="border:0.3mm solid ${s.borderColor || "#bfc7d6"};padding:2mm;${ri === 0 ? `background:${s.headerBg || "#071d3d"};color:${s.headerColor || "#fff"}` : `background:${s.tableBg || "#fff"};color:${s.color || "#172033"}`}">${esc(c)}</${tag}>`,
+              `<${tag} style="border:${num(s.borderWidth, 0.3, 0, 50)}mm solid ${cssColor(s.borderColor, "#bfc7d6")};padding:2mm;text-align:${cssKeyword(s.cellAlign, TEXT_ALIGN, "right")};${ri === 0 ? `background:${cssColor(s.headerBg, "#071d3d")};color:${cssColor(s.headerColor, "#fff")}` : `background:${cssColor(s.tableBg, "#fff")};color:${cssColor(s.color, "#172033")}`}">${esc(c)}</${tag}>`,
           )
           .join("")}</tr>`;
       })
       .join("");
     return wrap(
-      `<table style="width:100%;height:100%;border-collapse:collapse;table-layout:fixed;font-family:${cssFont(s.fontFamily)};font-size:${s.fontSize || 11}pt;direction:rtl">${cells}</table>`,
+      `<table style="width:100%;height:100%;border-collapse:collapse;table-layout:fixed;font-family:${cssFont(s.fontFamily)};font-size:${num(s.fontSize, 11, 4, 400)}pt;direction:rtl">${cells}</table>`,
     );
   }
   return "";
@@ -241,28 +345,31 @@ function elHtml(el: CanvasEl): string {
 
 export function buildStandaloneHtml(project: Project, pages: Page[]) {
   const body = pages
-    .map(
-      (p) =>
-        `<section class="page" style="background:${p.bg || "#fff"}">${p.elements
-          .slice()
-          .sort((a, b) => a.z - b.z)
-          .map(elHtml)
-          .join("")}</section>`,
-    )
+    .map((p) => {
+      const size = pageSize(p);
+      return `<section class="page" style="width:${num(size.w, 210, 10, 1e4)}mm;height:${num(size.h, 297, 10, 1e4)}mm;background:${cssColor(p.bg, "#fff")}">${p.elements
+        .slice()
+        .sort((a, b) => num(a.z, 0) - num(b.z, 0))
+        .map(elHtml)
+        .join("")}</section>`;
+    })
     .join("\n");
+
+  const firstSize = pageSize(pages[0]);
 
   return `<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8"/>
 <title>${esc(project.name)}</title>
+<meta name="generator" content="${esc(BRAND.owner)} — ${esc(BRAND.platform)}"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@400;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Noto+Kufi+Arabic:wght@400;700&family=Noto+Naskh+Arabic:wght@400;700&family=Noto+Sans+Arabic:wght@400;700&family=Reem+Kufi:wght@400;700&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet"/>
 <style>
-  @page { size: A4; margin: 0; }
+  @page { size: ${firstSize.w}mm ${firstSize.h}mm; margin: 0; }
   * { box-sizing: border-box; }
   body { margin: 0; background: #e8eaef; font-family: "Tajawal","Cairo",sans-serif; }
-  .page { width: 210mm; height: 297mm; margin: 12mm auto; position: relative; overflow: hidden; background: #fff; box-shadow: 0 18px 50px rgba(15,23,42,.16); page-break-after: always; }
+  .page { position: relative; overflow: hidden; background: #fff; margin: 12mm auto; box-shadow: 0 18px 50px rgba(15,23,42,.16); page-break-after: always; }
   .el { position: absolute; overflow: hidden; }
   .text, .box { width: 100%; height: 100%; white-space: pre-wrap; word-break: break-word; }
   img { display: block; }
@@ -286,36 +393,41 @@ export function exportHtmlFile(project: Project, pages: Page[]) {
   downloadText(buildStandaloneHtml(project, pages), `${project.name || "report"}.html`, "text/html");
 }
 
+export function safeFileName(name: string) {
+  return (name || "تقرير").replace(/[\\/:*?"<>|]+/g, "-").trim() || "تقرير";
+}
+
 export async function runExport(
   format: ExportFormat,
-  canvases: HTMLCanvasElement[] | null,
+  pages: CapturedPage[] | null,
   project: Project,
-  pages: Page[],
+  selected: Page[],
 ) {
-  const name = (project.name || "تقرير").replace(/[\\/:*?"<>|]+/g, "-");
+  const name = safeFileName(project.name);
   try {
     if (format === "json") {
-      exportJson({ ...project, pages: project.pages });
+      exportJson({ ...project, pages: project.pages, updatedAt: Date.now() });
       toast.success("تم تنزيل ملف المشروع");
       return;
     }
     if (format === "html") {
-      exportHtmlFile(project, pages);
+      exportHtmlFile(project, selected);
       toast.success("تم تنزيل ملف HTML المستقل");
       return;
     }
-    if (!canvases?.length) {
-      toast.error("تعذر التقاط الصفحات");
+    if (!pages?.length) {
+      toast.error("تعذر التقاط الصفحات — أعد المحاولة");
       return;
     }
-    if (format === "pdf") await exportPdf(canvases, name);
-    if (format === "pptx") await exportPptx(canvases, name);
-    if (format === "docx") await exportDocx(canvases, name);
-    if (format === "png") await exportPngZip(canvases, name);
+    if (format === "pdf") await exportPdf(pages, name);
+    if (format === "pptx") await exportPptx(pages, name);
+    if (format === "docx") await exportDocx(pages, name);
+    if (format === "png") await exportImages(pages, name, "png");
+    if (format === "jpg") await exportImages(pages, name, "jpg");
     toast.success("تم التصدير بنجاح");
   } catch (err) {
     console.error(err);
-    toast.error("فشل التصدير. حاول جودة أقل أو قلّل عدد الصور.");
+    toast.error("فشل التصدير. جرّب جودة أقل أو قلّل عدد الصور.");
     throw err;
   }
 }

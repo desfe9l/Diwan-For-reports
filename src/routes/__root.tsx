@@ -1,9 +1,11 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
+import { BRAND } from "@/lib/brand";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "ديوان التقارير";
+const APP_NAME = `${BRAND.owner} — ${BRAND.platform}`;
+const DESCRIPTION = `${BRAND.owner}: ${BRAND.tagline}. محرر تقارير عربي بمقاسات A4 وA3 و16:9، مع تصدير PDF وPNG وJPG وWord وPowerPoint.`;
 
 export const Route = createRootRoute({
   head: () => ({
@@ -12,10 +14,11 @@ export const Route = createRootRoute({
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: APP_NAME },
       { name: "theme-color", content: "#071d3d" },
-      {
-        name: "description",
-        content: "استوديو تصميم التقارير الرسمية A4 — تصدير PDF وPowerPoint وWord وHTML",
-      },
+      { name: "description", content: DESCRIPTION },
+      { name: "author", content: BRAND.owner },
+      { property: "og:title", content: APP_NAME },
+      { property: "og:description", content: DESCRIPTION },
+      { property: "og:locale", content: "ar_SA" },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },

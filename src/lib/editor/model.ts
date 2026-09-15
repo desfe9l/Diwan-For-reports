@@ -1,10 +1,57 @@
 import { clamp, uid } from "@/lib/utils";
 
+/** A4 portrait, in millimetres — the historical default and page-size fallback. */
 export const A4 = { w: 210, h: 297 } as const;
+
 export const MIN_SIZE = 4;
 export const GRID = 5;
+/** Legacy single-project autosave slot, migrated into the library on first run. */
 export const STORE_KEY = "diwan-report-project-v2";
+export const LEGACY_STORE_KEY = STORE_KEY;
+/** Legacy UI prefs slot (active project, dark mode, zoom). */
 export const UI_KEY = "diwan-report-ui-v2";
+
+export type SizeId = "a4-portrait" | "a4-landscape" | "slide-16-9" | "a3-portrait" | "custom";
+
+export interface SizePreset {
+  id: SizeId;
+  name: string;
+  desc: string;
+  w: number;
+  h: number;
+}
+
+/** Page presets offered in the editor. `custom` keeps whatever the user types. */
+export const SIZE_PRESETS: SizePreset[] = [
+  { id: "a4-portrait", name: "A4 رأسي", desc: "210 × 297 مم — التقارير الرسمية", w: 210, h: 297 },
+  { id: "a4-landscape", name: "A4 أفقي", desc: "297 × 210 مم — الجداول العريضة", w: 297, h: 210 },
+  { id: "slide-16-9", name: "عرض 16:9", desc: "338.7 × 190.5 مم — العروض التقديمية", w: 338.7, h: 190.5 },
+  { id: "a3-portrait", name: "A3 رأسي", desc: "297 × 420 مم — الملصقات واللوحات", w: 297, h: 420 },
+  { id: "custom", name: "مقاس مخصص", desc: "أدخل العرض والارتفاع بالمليمتر", w: 210, h: 297 },
+];
+
+export function sizePreset(id: SizeId | string | undefined): SizePreset {
+  return SIZE_PRESETS.find((s) => s.id === id) || SIZE_PRESETS[0];
+}
+
+/** Page dimensions in mm; falls back to A4 so pre-upgrade projects keep working. */
+export function pageSize(page?: { w?: number; h?: number } | null): { w: number; h: number } {
+  const w = Number(page?.w);
+  const h = Number(page?.h);
+  return {
+    w: w > 10 ? w : A4.w,
+    h: h > 10 ? h : A4.h,
+  };
+}
+
+/** Match stored dimensions back to a preset id so the UI can show the active one. */
+export function sizeIdOf(page?: { w?: number; h?: number } | null): SizeId {
+  const { w, h } = pageSize(page);
+  const hit = SIZE_PRESETS.find(
+    (s) => s.id !== "custom" && Math.abs(s.w - w) < 0.5 && Math.abs(s.h - h) < 0.5,
+  );
+  return hit?.id || "custom";
+}
 
 export type ElType =
   | "text"
@@ -18,10 +65,11 @@ export type ElType =
   | "icon"
   | "stamp"
   | "qr"
-  | "stat";
+  | "stat"
+  | "progress";
 
 export type ThemeId = "official" | "eid" | "ministry" | "slate" | "sand";
-export type PackId = "official" | "eid" | "briefing" | "blank";
+export type PackId = "official" | "eid" | "briefing" | "blank" | "slides";
 
 export interface ElStyle {
   fontFamily?: string;
@@ -36,7 +84,9 @@ export interface ElStyle {
   radius?: number;
   textAlign?: "right" | "center" | "left" | "justify";
   lineHeight?: number;
+  letterSpacing?: number;
   textShadow?: string;
+  shadow?: string;
   objectFit?: "cover" | "contain" | "fill";
   objectX?: number;
   objectY?: number;
@@ -47,9 +97,11 @@ export interface ElStyle {
   headerBg?: string;
   headerColor?: string;
   tableBg?: string;
+  cellAlign?: "right" | "center" | "left";
   padding?: number;
-  shadow?: string;
   icon?: string;
+  /** `progress` elements: filled share of the bar, 0–100. */
+  value?: number;
 }
 
 export interface CanvasEl {
@@ -75,6 +127,9 @@ export interface Page {
   id: string;
   name: string;
   bg?: string;
+  /** Page width in mm; omitted means A4 portrait width. */
+  w?: number;
+  h?: number;
   elements: CanvasEl[];
 }
 
@@ -84,6 +139,33 @@ export interface Project {
   theme: ThemeId;
   orgName: string;
   pages: Page[];
+  /** Library metadata — absent on files exported before the upgrade. */
+  id?: string;
+  createdAt?: number;
+  updatedAt?: number;
+  defaultSize?: SizeId;
+}
+
+export interface ProjectMeta {
+  id: string;
+  name: string;
+  orgName: string;
+  theme: ThemeId;
+  pages: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export function projectMeta(p: Project): ProjectMeta {
+  return {
+    id: p.id || uid("proj"),
+    name: p.name || "مشروع بلا اسم",
+    orgName: p.orgName || "",
+    theme: p.theme || "official",
+    pages: p.pages?.length || 0,
+    createdAt: p.createdAt || Date.now(),
+    updatedAt: p.updatedAt || Date.now(),
+  };
 }
 
 export interface Theme {
@@ -168,6 +250,10 @@ export const THEMES: Record<ThemeId, Theme> = {
   },
 };
 
+/**
+ * Arabic-first font stack. Every family here ships a real Arabic cut through the
+ * Google Fonts link in `__root.tsx`; none is a Latin-only fallback.
+ */
 export const FONTS = [
   "Tajawal",
   "Cairo",
@@ -187,9 +273,13 @@ export const ICONS: Record<string, string> = {
   building: "M5 21V5h14v16M9 9h.01M15 9h.01M9 13h.01M15 13h.01M9 21v-4h6v4",
   chart: "M4 19h16M7 16v-5M12 16V8M17 16v-8",
   flag: "M5 21V4h10l-1.5 4L15 12H5",
-  users: "M16 19v-1.4A3.6 3.6 0 0 0 12.4 14H7.6A3.6 3.6 0 0 0 4 17.6V19M14.5 7.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0M20 19v-1.2A3.2 3.2 0 0 0 17.4 14.8M19 8.2a2.4 2.4 0 0 1 0 4.4",
-  target: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM12 12h.01",
+  users:
+    "M16 19v-1.4A3.6 3.6 0 0 0 12.4 14H7.6A3.6 3.6 0 0 0 4 17.6V19M14.5 7.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0M20 19v-1.2A3.2 3.2 0 0 0 17.4 14.8M19 8.2a2.4 2.4 0 0 1 0 4.4",
+  target:
+    "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM12 12h.01",
   leaf: "M5 19c8-1 13-8 14-16-8 1-14 7-14 16ZM5 19c3-4 8-7 14-8",
+  clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7v5l3.5 2",
+  doc: "M7 3h7l4 4v14H7zM14 3v4h4M10 12h5M10 16h5",
 };
 
 export const TYPE_NAME: Record<ElType, string> = {
@@ -205,7 +295,73 @@ export const TYPE_NAME: Record<ElType, string> = {
   stamp: "ختم",
   qr: "رمز QR",
   stat: "مؤشر",
+  progress: "شريط تقدم",
 };
+
+/** Named text roles so a report author picks intent, not point sizes. */
+export interface TextPreset {
+  id: string;
+  label: string;
+  sample: string;
+  style: Partial<ElStyle>;
+  w: number;
+  h: number;
+}
+
+export const TEXT_PRESETS: TextPreset[] = [
+  {
+    id: "title",
+    label: "عنوان رئيسي",
+    sample: "عنوان التقرير",
+    w: 150,
+    h: 18,
+    style: { fontSize: 26, fontWeight: 800, lineHeight: 1.25 },
+  },
+  {
+    id: "subtitle",
+    label: "عنوان فرعي",
+    sample: "عنوان فرعي للقسم",
+    w: 140,
+    h: 14,
+    style: { fontSize: 17, fontWeight: 700, lineHeight: 1.35 },
+  },
+  {
+    id: "body",
+    label: "نص أساسي",
+    sample: "نص التقرير الأساسي. انقر نقراً مزدوجاً للتعديل المباشر.",
+    w: 154,
+    h: 24,
+    style: { fontSize: 12.5, fontWeight: 500, lineHeight: 1.7 },
+  },
+  {
+    id: "caption",
+    label: "نص صغير",
+    sample: "ملاحظة أو مصدر البيانات",
+    w: 120,
+    h: 8,
+    style: { fontSize: 9, fontWeight: 500, lineHeight: 1.5 },
+  },
+  {
+    id: "number",
+    label: "رقم كبير",
+    sample: "904",
+    w: 60,
+    h: 24,
+    style: { fontSize: 34, fontWeight: 800, lineHeight: 1.1 },
+  },
+  {
+    id: "label",
+    label: "تسمية",
+    sample: "إجمالي الحالات",
+    w: 60,
+    h: 8,
+    style: { fontSize: 10, fontWeight: 600, lineHeight: 1.4 },
+  },
+];
+
+export function textPreset(id: string): TextPreset {
+  return TEXT_PRESETS.find((p) => p.id === id) || TEXT_PRESETS[2];
+}
 
 export function placeholderImage(kind: "logo" | "image") {
   const title = kind === "logo" ? "LOGO" : "IMAGE";
@@ -237,7 +393,7 @@ export function parseTable(content: string | undefined, cols = 3, rows = 4): str
       );
     }
   } catch {
-    /* fall through */
+    /* fall through to a generated table */
   }
   return JSON.parse(defaultTable(cols, rows)) as string[][];
 }
@@ -288,6 +444,8 @@ export function createElement(type: ElType, over: Partial<CanvasEl> = {}, theme?
         headerColor: "#ffffff",
         tableBg: "#ffffff",
         borderColor: t.line,
+        borderWidth: 0.3,
+        cellAlign: "right",
         color: t.ink,
       },
     },
@@ -360,6 +518,22 @@ export function createElement(type: ElType, over: Partial<CanvasEl> = {}, theme?
         lineHeight: 1.3,
       },
     },
+    progress: {
+      w: 120,
+      h: 16,
+      content: "نسبة الإنجاز",
+      style: {
+        fontFamily: "Cairo",
+        fontSize: 10,
+        fontWeight: 700,
+        color: t.ink,
+        fill: t.primary,
+        background: "#e8ecf3",
+        radius: 3,
+        value: 70,
+        textAlign: "right",
+      },
+    },
   };
 
   const d = defaults[type] || {};
@@ -383,12 +557,12 @@ export function createElement(type: ElType, over: Partial<CanvasEl> = {}, theme?
   return el;
 }
 
-export function constrainElement(el: CanvasEl) {
-  el.w = clamp(Number(el.w) || MIN_SIZE, MIN_SIZE, A4.w);
-  el.h = clamp(Number(el.h) || MIN_SIZE, MIN_SIZE, A4.h);
-  el.x = clamp(Number(el.x) || 0, 0, A4.w - el.w);
-  el.y = clamp(Number(el.y) || 0, 0, A4.h - el.h);
-  el.opacity = clamp(Number(el.opacity) ?? 1, 0, 1);
+export function constrainElement(el: CanvasEl, size: { w: number; h: number } = A4) {
+  el.w = clamp(Number(el.w) || MIN_SIZE, MIN_SIZE, size.w);
+  el.h = clamp(Number(el.h) || MIN_SIZE, MIN_SIZE, size.h);
+  el.x = clamp(Number(el.x) || 0, 0, Math.max(0, size.w - el.w));
+  el.y = clamp(Number(el.y) || 0, 0, Math.max(0, size.h - el.h));
+  el.opacity = clamp(Number.isFinite(Number(el.opacity)) ? Number(el.opacity) : 1, 0, 1);
   el.rotation = Number(el.rotation) || 0;
 }
 
@@ -411,3 +585,11 @@ export function clone<T>(v: T): T {
 export function cssFont(font?: string) {
   return `"${String(font || "Tajawal").replace(/"/g, "")}", "Cairo", sans-serif`;
 }
+
+/** Shared box-shadow vocabulary for elements and panels. */
+export const SHADOWS: { id: string; label: string; value: string }[] = [
+  { id: "none", label: "بدون ظل", value: "" },
+  { id: "soft", label: "خفيف", value: "0 1mm 3mm rgba(15,23,42,.10)" },
+  { id: "medium", label: "متوسط", value: "0 2mm 5mm rgba(15,23,42,.16)" },
+  { id: "strong", label: "قوي", value: "0 3mm 8mm rgba(15,23,42,.24)" },
+];

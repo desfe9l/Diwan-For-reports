@@ -3,23 +3,40 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Design tokens.
+ *
+ * Palette is deliberately restrained: white paper, neutral greys, deep navy and
+ * deep green as the two brand anchors, with gold used only as a thin accent.
+ * No gradient-led surfaces, no decorative elements without a function.
+ */
 @theme {
   --font-sans: "Tajawal", "Cairo", "IBM Plex Sans Arabic", "Noto Sans Arabic", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Cairo", "Tajawal", sans-serif;
+  --font-serif-ar: "Amiri", "Noto Naskh Arabic", serif;
+
   --color-navy: #071d3d;
   --color-navy-2: #102d57;
+  --color-navy-3: #1a3d6d;
+  --color-green: #0c3d2c;
+  --color-green-2: #145c42;
   --color-gold: #c6a05a;
   --color-gold-2: #e8c978;
   --color-ink: #172033;
-  --color-paper: #f4f6f9;
+  --color-paper: #f2f4f8;
   --color-surface: #ffffff;
-  --color-muted: #697184;
-  --color-line: #d9dee8;
+  --color-muted: #6b7383;
+  --color-line: #dde2ea;
+  --color-line-2: #edf0f5;
   --color-danger: #b42318;
   --color-ok: #087f5b;
+
   --radius-sm: 6px;
   --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-lg: 14px;
+
+  --shadow-panel: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+  --shadow-page: 0 24px 64px rgba(15, 23, 42, 0.18);
 }
 
 @layer base {
@@ -28,14 +45,8 @@
     cursor: pointer;
   }
 
-  html,
-  body,
-  #app {
-    height: 100%;
-    margin: 0;
-  }
-
   html {
+    height: 100%;
     color-scheme: light;
   }
 
@@ -43,41 +54,72 @@
     color-scheme: dark;
   }
 
+  /* Site pages scroll the document; the editor is a fixed-height shell that
+     scrolls its own panes. `body.is-editor` is toggled by the editor route. */
   body {
+    min-height: 100%;
+    margin: 0;
     font-family: var(--font-sans);
     background: var(--color-paper);
     color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body.is-editor {
+    height: 100%;
     overflow: hidden;
+  }
+
+  body.is-editor #app {
+    height: 100%;
   }
 
   html.dark body {
     background: #0f141c;
-    color: #edf2f7;
+    color: #e9eef5;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-navy-2);
+    outline-offset: 2px;
+  }
+
+  /* Numbers in Arabic UI read better with tabular figures in forms. */
+  input[type="number"] {
+    font-variant-numeric: tabular-nums;
   }
 }
 
+/* ---------- Editor canvas ---------- */
+
 .studio-grid {
+  background-color: var(--color-paper);
   background-image:
-    linear-gradient(rgba(7, 29, 61, 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(7, 29, 61, 0.055) 1px, transparent 1px);
+    linear-gradient(rgba(7, 29, 61, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(7, 29, 61, 0.05) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 
 html.dark .studio-grid {
+  background-color: #0f141c;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+}
+
+.page-frame {
+  transform-origin: top center;
 }
 
 .report-page {
+  position: relative;
   width: 210mm;
   height: 297mm;
-  position: relative;
   overflow: hidden;
   direction: rtl;
   background: #fff;
   color: #172033;
-  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.18);
+  box-shadow: var(--shadow-page);
   isolation: isolate;
   user-select: none;
 }
@@ -179,6 +221,24 @@ html.dark .studio-grid {
   cursor: text;
   user-select: text;
   outline: none;
+}
+
+/*
+ * Reordering handles for the page rail and project list. Kept as a utility so
+ * both use the same cursor language as the canvas.
+ */
+.drag-handle {
+  cursor: grab;
+  touch-action: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.drop-target {
+  outline: 2px dashed var(--color-gold);
+  outline-offset: 2px;
 }
 
 @media print {

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { ICONS, cssFont, parseTable, type CanvasEl } from "@/lib/editor/model";
 import { useEditor } from "@/lib/editor/store";
 import { cn } from "@/lib/utils";
@@ -12,17 +12,27 @@ interface Props {
   onPointerDown: (e: React.PointerEvent, kind: "move" | "resize" | "rotate", handle?: string) => void;
 }
 
+/** Types whose text can be edited in place with a double click. */
+const EDITABLE = new Set(["text", "box", "stat", "stamp", "progress"]);
+
 export function ElementNode({ el, selected, interactive, onPointerDown }: Props) {
   const updateElement = useEditor((s) => s.updateElement);
   const commit = useEditor((s) => s.commit);
   const textRef = useRef<HTMLDivElement>(null);
   const editing = useRef(false);
 
-  if (el.hidden) return null;
+  // A remount (undo, page switch) must never leave a stale contentEditable DOM
+  // node behind: the rendered `{el.content}` would be out of sync with it.
+  useEffect(() => {
+    if (editing.current && textRef.current && textRef.current.isContentEditable) {
+      editing.current = false;
+      textRef.current.contentEditable = "false";
+      textRef.current.classList.remove("editing");
+    }
+  }, [el.id]);
 
-  const s = el.style || {};
   const startEdit = (e: React.MouseEvent) => {
-    if (!interactive || el.locked || !["text", "box", "stat", "stamp"].includes(el.type)) return;
+    if (!interactive || el.locked || !EDITABLE.has(el.type)) return;
     e.stopPropagation();
     const node = textRef.current;
     if (!node) return;
@@ -44,9 +54,12 @@ export function ElementNode({ el, selected, interactive, onPointerDown }: Props)
     editing.current = false;
     node.contentEditable = "false";
     node.classList.remove("editing");
-    updateElement(el.id, { content: node.innerText });
+    const next = node.innerText;
+    if (next !== el.content) updateElement(el.id, { content: next });
     commit();
   };
+
+  if (el.hidden) return null;
 
   return (
     <div
@@ -60,6 +73,7 @@ export function ElementNode({ el, selected, interactive, onPointerDown }: Props)
         transform: `rotate(${el.rotation || 0}deg)`,
         opacity: el.opacity ?? 1,
         zIndex: el.z,
+        boxShadow: el.style?.shadow || undefined,
         cursor: el.locked ? "not-allowed" : interactive ? "move" : "default",
       }}
       onPointerDown={(e) => {
@@ -113,6 +127,7 @@ function ElementContent({
     fontStyle: (s.fontStyle as React.CSSProperties["fontStyle"]) || "normal",
     textAlign: s.textAlign || "right",
     lineHeight: s.lineHeight || 1.45,
+    letterSpacing: s.letterSpacing ? `${s.letterSpacing}mm` : undefined,
     textShadow: s.textShadow || "none",
   };
 
@@ -150,6 +165,45 @@ function ElementContent({
         onBlur={onBlur}
       >
         {el.content}
+      </div>
+    );
+  }
+
+  if (el.type === "progress") {
+    const value = Math.max(0, Math.min(100, Number(s.value) || 0));
+    const barHeight = Math.max(2, el.h * 0.28);
+    return (
+      <div
+        ref={textRef}
+        className="el-box"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          gap: "1.4mm",
+          direction: "rtl",
+          fontFamily: cssFont(s.fontFamily),
+          fontSize: `${s.fontSize || 10}pt`,
+          color: s.color || "#172033",
+          fontWeight: s.fontWeight || 700,
+        }}
+        onPointerDown={(e) => e.currentTarget.isContentEditable && e.stopPropagation()}
+        onBlur={onBlur}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span>{el.content}</span>
+          <span style={{ color: s.fill || "#071d3d" }}>{value}%</span>
+        </div>
+        <div
+          style={{
+            height: `${barHeight}mm`,
+            background: s.background || "#e8ecf3",
+            borderRadius: `${s.radius ?? 3}mm`,
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ width: `${value}%`, height: "100%", background: s.fill || "#071d3d" }} />
+        </div>
       </div>
     );
   }
@@ -203,10 +257,17 @@ function ElementContent({
   }
 
   if (el.type === "image" || el.type === "logo" || el.type === "qr") {
+    if (!el.src) {
+      return (
+        <div className="grid h-full w-full place-items-center bg-[#f4f6fa] text-[9pt] font-bold text-muted">
+          لا توجد صورة
+        </div>
+      );
+    }
     return (
       <img
         alt=""
-        src={el.src || ""}
+        src={el.src}
         draggable={false}
         style={{
           width: "100%",
@@ -286,12 +347,12 @@ function ElementContent({
                   <Tag
                     key={ci}
                     style={{
-                      border: `0.3mm solid ${s.borderColor || "#bfc7d6"}`,
+                      border: `${s.borderWidth ?? 0.3}mm solid ${s.borderColor || "#bfc7d6"}`,
                       padding: "1.6mm",
                       background: ri === 0 ? s.headerBg || "#071d3d" : s.tableBg || "#fff",
                       color: ri === 0 ? s.headerColor || "#fff" : s.color || "#172033",
                       fontWeight: ri === 0 ? 800 : 500,
-                      textAlign: "right",
+                      textAlign: s.cellAlign || "right",
                       verticalAlign: "top",
                       overflow: "hidden",
                     }}
