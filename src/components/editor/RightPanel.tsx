@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlignCenter,
   AlignLeft,
   AlignRight,
   ArrowDown,
   ArrowUp,
+  Baseline,
   Copy,
   Eye,
   EyeOff,
@@ -14,7 +15,6 @@ import {
   Unlock,
 } from "lucide-react";
 import {
-  FONTS,
   ICONS,
   SHADOWS,
   THEMES,
@@ -22,8 +22,19 @@ import {
   parseTable,
   type CanvasEl,
 } from "@/lib/editor/model";
+import {
+  LETTER_SPACINGS,
+  LINE_HEIGHTS,
+  NUMERAL_OPTIONS,
+  TEXT_FIT_OPTIONS,
+} from "@/lib/editor/arabic";
+import { SHAPES } from "@/lib/editor/shapes";
+import { columnTotals, resizeMatrix, toCsv } from "@/lib/editor/tables";
+import { prepareText } from "@/lib/editor/text-render";
 import { useEditor, type RightTab } from "@/lib/editor/store";
 import { cn, round } from "@/lib/utils";
+import { toast } from "sonner";
+import { ShapePreview } from "./ShapePreview";
 
 const TEXT_TYPES = ["text", "box", "stat", "stamp", "table", "progress"];
 
@@ -45,8 +56,17 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
   const toggleLock = useEditor((s) => s.toggleLock);
   const toggleHidden = useEditor((s) => s.toggleHidden);
   const alignPage = useEditor((s) => s.alignPage);
+  const fontChoices = useEditor((s) => s.fontChoices);
+  const probeFonts = useEditor((s) => s.probeFonts);
+  const setLeftTab = useEditor((s) => s.setLeftTab);
   const theme = THEMES[useEditor((s) => s.theme)];
   const [cellEditor, setCellEditor] = useState(false);
+
+  // The font list is needed here for the family selector, so probe on first use
+  // rather than making the author open the font tab just to populate the list.
+  useEffect(() => {
+    probeFonts();
+  }, [probeFonts]);
 
   const page = pages.find((p) => p.id === activePageId);
   const el = page?.elements.find((e) => e.id === selectedId);
@@ -232,13 +252,20 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                     value={el.style.fontFamily || "Tajawal"}
                     onChange={(e) => updateStyle(el.id, { fontFamily: e.target.value })}
                   >
-                    {FONTS.map((f) => (
-                      <option key={f} value={f}>
-                        {f}
+                    {fontChoices.map((f) => (
+                      <option key={f.family} value={f.family}>
+                        {f.family} — {f.note}
                       </option>
                     ))}
                   </select>
                 </Field>
+                <button
+                  type="button"
+                  onClick={() => setLeftTab("fonts")}
+                  className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-[8px] border border-line text-[10px] font-extrabold dark:border-white/10"
+                >
+                  <Baseline className="size-3.5" /> مكتبة الخطوط ({fontChoices.length})
+                </button>
                 <div className="grid grid-cols-2 gap-2">
                   <Field label="الحجم pt">
                     <input
@@ -312,15 +339,150 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
             )}
 
             {(el.type === "text" || el.type === "box" || el.type === "stat") && (
-              <Field label="تباعد الحروف مم">
-                <input
-                  type="number"
-                  step={0.1}
-                  value={el.style.letterSpacing || 0}
-                  onChange={(e) => updateStyle(el.id, { letterSpacing: Number(e.target.value) }, true)}
-                  onBlur={() => updateStyle(el.id, { letterSpacing: el.style.letterSpacing })}
-                />
-              </Field>
+              <>
+                <Field label="تباعد الأسطر">
+                  <div className="flex gap-1">
+                    {LINE_HEIGHTS.map((l) => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        title={`${l.label} (${l.value})`}
+                        onClick={() => updateStyle(el.id, { lineHeight: l.value })}
+                        className={cn(
+                          "h-8 flex-1 rounded-[6px] border text-[10px] font-extrabold",
+                          Math.abs((el.style.lineHeight || 1.45) - l.value) < 0.01
+                            ? "border-navy-2 bg-navy-2/5"
+                            : "border-line dark:border-white/10",
+                        )}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                <Field label="تباعد الحروف">
+                  <div className="flex gap-1">
+                    {LETTER_SPACINGS.map((l) => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        title={l.label}
+                        onClick={() => updateStyle(el.id, { letterSpacing: l.value })}
+                        className={cn(
+                          "h-8 flex-1 rounded-[6px] border text-[10px] font-extrabold",
+                          Math.abs((el.style.letterSpacing || 0) - l.value) < 0.01
+                            ? "border-navy-2 bg-navy-2/5"
+                            : "border-line dark:border-white/10",
+                        )}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+              </>
+            )}
+
+            {TEXT_MARKUP_TYPES.has(el.type) && (
+              <section className="grid gap-2.5 rounded-[10px] border border-line p-2.5 dark:border-white/10">
+                <h3 className="text-[11px] font-extrabold tracking-wide text-muted">معالجة النص العربي</h3>
+
+                <Field label="شكل الأرقام">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {NUMERAL_OPTIONS.map((n) => (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => updateStyle(el.id, { numerals: n.id })}
+                        className={cn(
+                          "h-9 rounded-[8px] border text-[11px] font-extrabold",
+                          (el.style.numerals || "western") === n.id
+                            ? "border-navy-2 bg-navy-2/5"
+                            : "border-line dark:border-white/10",
+                        )}
+                      >
+                        {n.label} <span className="text-muted">{n.sample}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                <Field label="النص الطويل">
+                  <select
+                    value={el.style.textFit || "clip"}
+                    onChange={(e) => updateStyle(el.id, { textFit: e.target.value as "clip" | "shrink" | "grow" })}
+                  >
+                    {TEXT_FIT_OPTIONS.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label} — {t.hint}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <TextFitStatus el={el} />
+
+                {el.style.textFit === "shrink" && (
+                  <p className="text-[10px] leading-4 text-muted">
+                    يُصغَّر الخط تلقائياً ليتسع النص داخل الإطار — يتوقف عند أدنى حجم مقروء.
+                  </p>
+                )}
+
+                <div className="grid grid-cols-2 gap-1.5">
+                  <label className="flex h-9 items-center justify-between gap-2 rounded-[8px] border border-line px-2 text-[10px] font-extrabold dark:border-white/10">
+                    الاتجاه عمودي
+                    <input
+                      type="checkbox"
+                      checked={el.style.writingMode === "vertical"}
+                      onChange={(e) => updateStyle(el.id, { writingMode: e.target.checked ? "vertical" : "horizontal" })}
+                      className="accent-navy"
+                    />
+                  </label>
+                  <label className="flex h-9 items-center justify-between gap-2 rounded-[8px] border border-line px-2 text-[10px] font-extrabold dark:border-white/10">
+                    إزالة التشكيل
+                    <input
+                      type="checkbox"
+                      checked={Boolean(el.style.stripTashkeel)}
+                      onChange={(e) => updateStyle(el.id, { stripTashkeel: e.target.checked })}
+                      className="accent-navy"
+                    />
+                  </label>
+                  <label className="flex h-9 items-center justify-between gap-2 rounded-[8px] border border-line px-2 text-[10px] font-extrabold dark:border-white/10">
+                    احترام أسطر النص
+                    <input
+                      type="checkbox"
+                      checked={Boolean(el.style.preserveBreaks)}
+                      onChange={(e) => updateStyle(el.id, { preserveBreaks: e.target.checked })}
+                      className="accent-navy"
+                    />
+                  </label>
+                  <label className="flex h-9 items-center justify-between gap-2 rounded-[8px] border border-line px-2 text-[10px] font-extrabold dark:border-white/10">
+                    ربط الوحدات
+                    <input
+                      type="checkbox"
+                      checked={Boolean(el.style.bindUnits)}
+                      onChange={(e) => updateStyle(el.id, { bindUnits: e.target.checked })}
+                      className="accent-navy"
+                    />
+                  </label>
+                  <label className="flex h-9 items-center justify-between gap-2 rounded-[8px] border border-line px-2 text-[10px] font-extrabold dark:border-white/10">
+                    ترقيم عربي
+                    <input
+                      type="checkbox"
+                      checked={Boolean(el.style.arabicPunctuation)}
+                      onChange={(e) => updateStyle(el.id, { arabicPunctuation: e.target.checked })}
+                      className="accent-navy"
+                    />
+                  </label>
+                </div>
+
+                {el.style.writingMode === "vertical" && (
+                  <p className="text-[10px] leading-4 text-muted">
+                    الاتجاه العمودي مناسب لعناوين الكعب والغلاف الجانبي. تأكد من كفاية ارتفاع العنصر.
+                  </p>
+                )}
+              </section>
             )}
 
             {["box", "stat", "progress"].includes(el.type) && (
@@ -382,32 +544,119 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
             )}
 
             {el.type === "progress" && (
-              <Field label={`القيمة: ${Math.round(Number(el.style.value) || 0)}%`} full>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={Number(el.style.value) || 0}
-                  onChange={(e) => updateStyle(el.id, { value: Number(e.target.value) }, true)}
-                  onBlur={() => updateStyle(el.id, { value: el.style.value })}
-                  className="w-full accent-navy"
-                />
-              </Field>
+              <>
+                <Field label="النوع" full>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(["bar", "ring"] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => updateStyle(el.id, { variant: v })}
+                        className={cn(
+                          "h-9 rounded-[8px] border text-[11px] font-extrabold",
+                          (el.style.variant || "bar") === v
+                            ? "border-navy-2 bg-navy-2/5"
+                            : "border-line dark:border-white/10",
+                        )}
+                      >
+                        {v === "bar" ? "شريط أفقي" : "حلقة دائرية"}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                <Field label={`نسبة الإنجاز: ${Math.round(Number(el.style.value) || 0)}%`} full>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={Number(el.style.value) || 0}
+                    onChange={(e) => updateStyle(el.id, { value: Number(e.target.value) }, true)}
+                    onBlur={() => updateStyle(el.id, { value: el.style.value })}
+                    className="w-full accent-navy"
+                  />
+                </Field>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="رقم النسبة">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={Math.round(Number(el.style.value) || 0)}
+                      onChange={(e) => updateStyle(el.id, { value: Number(e.target.value) }, true)}
+                      onBlur={() => updateStyle(el.id, { value: el.style.value })}
+                    />
+                  </Field>
+                  <Field label="عرض الرقم">
+                    <select
+                      value={el.style.showValue === false ? "no" : "yes"}
+                      onChange={(e) => updateStyle(el.id, { showValue: e.target.value === "yes" })}
+                    >
+                      <option value="yes">ظاهر</option>
+                      <option value="no">مخفي</option>
+                    </select>
+                  </Field>
+                  <Field label="لون الشريط">
+                    <input
+                      type="color"
+                      value={toColor(el.style.fill, theme.primary)}
+                      onChange={(e) => updateStyle(el.id, { fill: e.target.value }, true)}
+                      onBlur={() => updateStyle(el.id, { fill: el.style.fill })}
+                    />
+                  </Field>
+                  <Field label="لون المسار">
+                    <input
+                      type="color"
+                      value={toColor(el.style.background, "#e8ecf3")}
+                      onChange={(e) => updateStyle(el.id, { background: e.target.value }, true)}
+                      onBlur={() => updateStyle(el.id, { background: el.style.background })}
+                    />
+                  </Field>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[25, 50, 75, 90, 100].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => updateStyle(el.id, { value: v })}
+                      className="h-8 rounded-[8px] border border-line text-[11px] font-extrabold tabular-nums dark:border-white/10"
+                    >
+                      {v}%
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
 
             {el.type === "shape" && (
               <>
-                <Field label="الشكل">
-                  <select
-                    value={el.style.shape || "rect"}
-                    onChange={(e) => updateStyle(el.id, { shape: e.target.value as "rect" | "circle" | "rounded" })}
-                  >
-                    <option value="rect">مستطيل</option>
-                    <option value="rounded">مستطيل مستدير</option>
-                    <option value="circle">دائرة</option>
-                  </select>
+                <Field label="الشكل" full>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {SHAPES.map((s) => {
+                      const active = (el.style.shapeId || el.style.shape || "rect") === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => updateStyle(el.id, { shapeId: s.id })}
+                          title={s.label}
+                          className={cn(
+                            "grid aspect-square place-items-center rounded-[6px] border p-1",
+                            active
+                              ? "border-navy-2 bg-navy-2/10 text-navy-2 dark:text-gold-2"
+                              : "border-line text-muted hover:border-navy-2 dark:border-white/10",
+                          )}
+                        >
+                          <ShapePreview shapeId={s.id} className="size-full max-h-7" />
+                        </button>
+                      );
+                    })}
+                  </div>
                 </Field>
+
                 <div className="grid grid-cols-2 gap-2">
                   <Field label="التعبئة">
                     <input
@@ -417,10 +666,10 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                       onBlur={() => updateStyle(el.id, { fill: el.style.fill })}
                     />
                   </Field>
-                  <Field label="الإطار">
+                  <Field label="لون الإطار">
                     <input
                       type="color"
-                      value={toColor(el.style.borderColor, theme.primary)}
+                      value={toColor(el.style.borderColor, "#c6a05a")}
                       onChange={(e) => updateStyle(el.id, { borderColor: e.target.value }, true)}
                       onBlur={() => updateStyle(el.id, { borderColor: el.style.borderColor })}
                     />
@@ -428,23 +677,36 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                   <Field label="سماكة الإطار">
                     <input
                       type="number"
-                      step={0.05}
+                      step={0.1}
                       min={0}
                       value={el.style.borderWidth ?? 0}
                       onChange={(e) => updateStyle(el.id, { borderWidth: Number(e.target.value) }, true)}
                       onBlur={() => updateStyle(el.id, { borderWidth: el.style.borderWidth })}
                     />
                   </Field>
-                  <Field label="الزوايا مم">
-                    <input
-                      type="number"
-                      min={0}
-                      value={el.style.radius || 0}
-                      onChange={(e) => updateStyle(el.id, { radius: Number(e.target.value) }, true)}
-                      onBlur={() => updateStyle(el.id, { radius: el.style.radius })}
-                    />
+                  <Field label="بلا إطار">
+                    <button
+                      type="button"
+                      onClick={() => updateStyle(el.id, { borderWidth: 0 })}
+                      className="h-9 w-full rounded-[8px] border border-line text-[11px] font-extrabold dark:border-white/10"
+                    >
+                      إزالة
+                    </button>
                   </Field>
                 </div>
+
+                <Field label="الشفافية" full>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={Math.round((el.opacity ?? 1) * 100)}
+                    onChange={(e) => updateElement(el.id, { opacity: Number(e.target.value) / 100 }, true)}
+                    onBlur={() => updateElement(el.id, { opacity: el.opacity })}
+                    className="w-full accent-navy"
+                  />
+                </Field>
               </>
             )}
 
@@ -527,6 +789,44 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                     />
                   </Field>
                 </div>
+
+                <Field label="إضافة / حذف سريع" full>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      disabled={(el.style.rows || 4) >= 30}
+                      onClick={() => setTableSize(el, { rows: (el.style.rows || 4) + 1 }, updateElement)}
+                      className="h-8 rounded-[6px] border border-line text-[10px] font-extrabold disabled:opacity-40 dark:border-white/10"
+                    >
+                      + صف
+                    </button>
+                    <button
+                      type="button"
+                      disabled={(el.style.rows || 4) <= 1}
+                      onClick={() => setTableSize(el, { rows: (el.style.rows || 4) - 1 }, updateElement)}
+                      className="h-8 rounded-[6px] border border-line text-[10px] font-extrabold disabled:opacity-40 dark:border-white/10"
+                    >
+                      − صف
+                    </button>
+                    <button
+                      type="button"
+                      disabled={(el.style.cols || 3) >= 12}
+                      onClick={() => setTableSize(el, { cols: (el.style.cols || 3) + 1 }, updateElement)}
+                      className="h-8 rounded-[6px] border border-line text-[10px] font-extrabold disabled:opacity-40 dark:border-white/10"
+                    >
+                      + عمود
+                    </button>
+                    <button
+                      type="button"
+                      disabled={(el.style.cols || 3) <= 1}
+                      onClick={() => setTableSize(el, { cols: (el.style.cols || 3) - 1 }, updateElement)}
+                      className="h-8 rounded-[6px] border border-line text-[10px] font-extrabold disabled:opacity-40 dark:border-white/10"
+                    >
+                      − عمود
+                    </button>
+                  </div>
+                </Field>
+
                 <Field label="محاذاة الخلايا">
                   <select
                     value={el.style.cellAlign || "right"}
@@ -572,12 +872,34 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                       onBlur={() => updateStyle(el.id, { borderColor: el.style.borderColor })}
                     />
                   </Field>
+                  <Field label="تخطيط الصفوف">
+                    <select
+                      value={el.style.stripeBg ? "stripe" : "plain"}
+                      onChange={(e) => updateStyle(el.id, { stripeBg: e.target.value === "stripe" ? "#f4f6fa" : "" })}
+                    >
+                      <option value="plain">بلون واحد</option>
+                      <option value="stripe">صفوف متبادلة</option>
+                    </select>
+                  </Field>
+                  <Field label="حجم الخط pt">
+                    <input
+                      type="number"
+                      min={5}
+                      max={40}
+                      value={el.style.fontSize || 11}
+                      onChange={(e) => updateStyle(el.id, { fontSize: Number(e.target.value) }, true)}
+                      onBlur={() => updateStyle(el.id, { fontSize: el.style.fontSize })}
+                    />
+                  </Field>
                 </div>
+
+                <TableTotals el={el} />
 
                 <div>
                   <button
                     type="button"
                     onClick={() => setCellEditor((v) => !v)}
+                    aria-expanded={cellEditor}
                     className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-[8px] border border-line text-[12px] font-extrabold dark:border-white/10"
                   >
                     <Grid2x2 className="size-3.5" />
@@ -593,6 +915,7 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                                 <td key={ci} className="p-0.5">
                                   <input
                                     value={cell}
+                                    aria-label={`صف ${ri + 1} عمود ${ci + 1}`}
                                     onChange={(e) => setTableCell(el, ri, ci, e.target.value, updateElement)}
                                     className="h-7 w-[74px] rounded-[4px] border border-line px-1 text-[11px] dark:border-white/10 dark:bg-white/5"
                                   />
@@ -621,6 +944,17 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                     onBlur={() => updateElement(el.id, { content: el.content })}
                   />
                 </Field>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const data = parseTable(el.content, el.style.cols, el.style.rows);
+                    void copyTableCsv(data);
+                  }}
+                  className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-[8px] border border-line text-[11px] font-extrabold dark:border-white/10"
+                >
+                  <Copy className="size-3.5" /> نسخ الجدول كـ CSV
+                </button>
               </>
             )}
 
@@ -736,13 +1070,87 @@ function resizeTable(
   const safeCols = Math.max(1, Math.min(12, cols || 1));
   const safeRows = Math.max(1, Math.min(30, rows || 1));
   const data = parseTable(el.content, el.style.cols, el.style.rows);
-  const next = Array.from({ length: safeRows }, (_, r) =>
-    Array.from({ length: safeCols }, (_, c) => data[r]?.[c] ?? ""),
-  );
   updateElement(el.id, {
-    content: JSON.stringify(next),
+    content: JSON.stringify(resizeMatrix(data, safeCols, safeRows)),
     style: { ...el.style, cols: safeCols, rows: safeRows },
   });
+}
+
+/** Shrink or grow the grid, keeping the cells that already have content. */
+function setTableSize(
+  el: CanvasEl,
+  next: { cols?: number; rows?: number },
+  updateElement: (id: string, patch: Partial<CanvasEl>, live?: boolean) => void,
+) {
+  resizeTable(el, next.cols ?? el.style.cols ?? 3, next.rows ?? el.style.rows ?? 4, updateElement);
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Report how the element's text currently fits its box.
+ *
+ * Uses the same `prepareText` the canvas and exporter use, so the number shown
+ * here is the size actually rendered rather than a separate estimate.
+ */
+function TextFitStatus({ el }: { el: CanvasEl }) {
+  const prepared = prepareText(el);
+  if (!prepared.text.trim()) return null;
+  const base = Number(el.style.fontSize) || 14;
+  if (prepared.overflow) {
+    return (
+      <p className="rounded-[6px] border border-gold/50 bg-gold/10 px-2 py-1.5 text-[10px] leading-4 font-bold text-navy dark:text-gold-2">
+        تم تصغير الخط تلقائياً من {round2(base)}pt إلى {round2(prepared.fontSize)}pt ليتّسع النص.
+      </p>
+    );
+  }
+  const grew = prepared.fontSize > base + 0.05;
+  return (
+    <p className="rounded-[6px] border border-line px-2 py-1.5 text-[10px] leading-4 text-muted">
+      {grew
+        ? `النص يتّسع — تم تكبيره إلى ${round2(prepared.fontSize)}pt.`
+        : "النص يتّسع داخل الإطار بالحجم الحالي."}
+    </p>
+  );
+}
+
+/** Copy the grid as CSV so it can travel into Excel, Sheets, or another app. */
+async function copyTableCsv(data: string[][]) {
+  const csv = toCsv(data);
+  try {
+    await navigator.clipboard.writeText(csv);
+    toast.success("تم نسخ الجدول بصيغة CSV");
+  } catch {
+    // Clipboard permission can be denied; fall back to a download so the data
+    // is still retrievable rather than silently lost. `toCsv` already includes
+    // the UTF-8 BOM that makes Excel read Arabic correctly.
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "table.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.message("تم تنزيل الجدول بصيغة CSV", { description: "تعذّر الوصول إلى الحافظة." });
+  }
+}
+
+/** Read-only column sums, so the author can verify figures before typing them. */
+function TableTotals({ el }: { el: CanvasEl }) {
+  const totals = columnTotals(parseTable(el.content, el.style.cols, el.style.rows)).filter((t) => t.numeric);
+  if (!totals.length) return null;
+  return (
+    <div className="rounded-[8px] border border-line p-2 dark:border-white/10">
+      <h4 className="mb-1.5 text-[10px] font-extrabold text-muted">مجموع الأعمدة الرقمية</h4>
+      <ul className="grid gap-1">
+        {totals.map((t) => (
+          <li key={t.col} className="flex items-center justify-between text-[11px]">
+            <span className="text-muted">العمود {t.col + 1}</span>
+            <span className="font-extrabold tabular-nums">{round2(t.total)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function setTableCell(

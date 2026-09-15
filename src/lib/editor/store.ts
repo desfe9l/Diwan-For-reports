@@ -32,13 +32,47 @@ import {
   storageMode,
 } from "./storage";
 import { createProject, createTemplatePage } from "./templates";
-import { LEGACY_STORE_KEY, UI_KEY } from "./model";
+import { FONTS, LEGACY_STORE_KEY, UI_KEY } from "./model";
+import { detectDeviceFonts, type DetectedFont } from "./fonts";
+import { safeImageSrc } from "./images";
 import { clamp, uid } from "@/lib/utils";
 
-export type LeftTab = "elements" | "templates" | "theme" | "pages" | "settings";
+export type LeftTab = "elements" | "shapes" | "templates" | "theme" | "pages" | "fonts" | "settings";
 export type RightTab = "properties" | "layers";
 export type View = "home" | "editor";
+
 export type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
+
+/** Bundled families as the initial (pre-probe) font list. */
+function bundledFontChoices(): FontChoice[] {
+  return FONTS.map((family) => ({ family, note: "مضمّن في المنصة", source: "bundled" as const }));
+}
+
+/**
+ * Order the font list: bundled first (always present), then families found on
+ * this device, then anything the author uploaded. De-duplicated by family so a
+ * system font that is also bundled does not appear twice.
+ */
+function mergeFontChoices(detected: DetectedFont[], uploaded: FontChoice[]): FontChoice[] {
+  const bundled: FontChoice[] = FONTS.map((family) => ({
+    family,
+    note: "مضمّن في المنصة",
+    source: "bundled" as const,
+  }));
+  const seen = new Set(bundled.map((f) => f.family));
+  const system: FontChoice[] = [];
+  for (const f of detected) {
+    if (seen.has(f.family) || f.bundled) continue;
+    seen.add(f.family);
+    system.push({ family: f.family, note: f.note, source: "system" });
+  }
+  const extra = uploaded.filter((f) => {
+    if (seen.has(f.family)) return false;
+    seen.add(f.family);
+    return true;
+  });
+  return [...bundled, ...system, ...extra];
+}
 
 interface Ui {
   activePageId: string;
@@ -71,12 +105,25 @@ export interface StorageInfo {
   persistent: boolean;
 }
 
+/** A font the author can pick: bundled webfont, detected system face, or uploaded. */
+export interface FontChoice {
+  family: string;
+  note: string;
+  source: "bundled" | "system" | "uploaded";
+}
+
 interface EditorStore extends Project, Ui, History {
   hydrated: boolean;
   clipboard: CanvasEl | null;
   projects: ProjectMeta[];
   projectsLoading: boolean;
   storage: StorageInfo;
+  /** Bundled + detected + uploaded families, in display order. */
+  fontChoices: FontChoice[];
+  /** True once the one-off device probe has run. */
+  fontsProbed: boolean;
+  probeFonts: () => void;
+  registerFont: (family: string, note?: string) => void;
   hydrate: () => Promise<void>;
   refreshProjects: () => Promise<void>;
   createProject: (pack: PackId, theme?: ThemeId) => Promise<void>;
@@ -111,6 +158,12 @@ interface EditorStore extends Project, Ui, History {
   bring: (dir: "forward" | "back" | "front" | "bottom") => void;
   toggleLock: () => void;
   toggleHidden: () => void;
+  /**
+   * Copy an element straight into another page. The clipboard alone can do this
+   * (copy → switch page → paste), but that loses the current selection and the
+   * source page context, so the layers panel offers a direct action.
+   */
+  copyElementToPage: (elId: string, pageId: string) => void;
   addPage: (size?: SizeId) => void;
   addTemplatePage: (id: string) => void;
   duplicatePage: (id?: string) => void;
@@ -163,6 +216,9 @@ function normalizeProject(incoming: Project): Project {
       el.style ||= {};
       el.opacity ??= 1;
       el.rotation ??= 0;
+      // Imported projects carry image sources as plain strings; drop any that
+      // could execute script before they reach the canvas or an export.
+      if (el.src) el.src = safeImageSrc(el.src);
       constrainElement(el, size);
     });
     normalizeZ(p);
@@ -236,6 +292,38 @@ export const useEditor = create<EditorStore>((set, get) => {
     projects: [],
     projectsLoading: true,
     storage: { mode: "indexeddb", persistent: true },
+    fontChoices: bundledFontChoices(),
+    fontsProbed: false,
+
+    /**
+     * Probe installed fonts on first editor open.
+     *
+     * Detection re-rasterises probe strings, so it is deferred until the author
+     * actually needs the list rather than run during boot, and `fontsProbed`
+     * keeps it to one run per session.
+     */
+    probeFonts: () => {
+      if (get().fontsProbed) return;
+      let detected: DetectedFont[] = [];
+      try {
+        detected = detectDeviceFonts();
+      } catch {
+        // A blocked canvas (privacy mode) leaves the bundled list intact.
+        detected = [];
+      }
+      const uploaded = get().fontChoices.filter((f) => f.source === "uploaded");
+      set({
+        fontsProbed: true,
+        fontChoices: mergeFontChoices(detected, uploaded),
+      });
+    },
+
+    registerFont: (family, note) => {
+      const trimmed = String(family || "").trim();
+      if (!trimmed) return;
+      const list = get().fontChoices.filter((f) => f.family !== trimmed);
+      set({ fontChoices: [...list, { family: trimmed, note: note || "خط مرفوع", source: "uploaded" }] });
+    },
 
     hydrate: async () => {
       if (get().hydrated) return;
@@ -397,7 +485,11 @@ export const useEditor = create<EditorStore>((set, get) => {
         void setSetting("dark", next);
       }
     },
-    setLeftTab: (leftTab) => set({ leftTab, leftOpen: true }),
+    setLeftTab: (leftTab) => {
+      set({ leftTab, leftOpen: true });
+      // Probing is deferred to the moment the font list is actually needed.
+      if (leftTab === "fonts") get().probeFonts();
+    },
     setRightTab: (rightTab) => set({ rightTab, rightOpen: true }),
     setTheme: (theme) => {
       set({ theme });
@@ -590,6 +682,28 @@ export const useEditor = create<EditorStore>((set, get) => {
         })),
       });
       pushHistory();
+    },
+
+    copyElementToPage: (elId, pageId) => {
+      const s = get();
+      const source = s.pages.find((p) => p.elements.some((e) => e.id === elId));
+      const target = s.pages.find((p) => p.id === pageId);
+      const el = source?.elements.find((e) => e.id === elId);
+      if (!source || !target || !el) return;
+      const size = pageSize(target);
+      const copy = clone(el);
+      copy.id = uid("el");
+      copy.z = nextZ(target);
+      copy.x = clamp(copy.x, 0, Math.max(0, size.w - copy.w));
+      copy.y = clamp(copy.y, 0, Math.max(0, size.h - copy.h));
+      constrainElement(copy, size);
+      set({
+        pages: s.pages.map((p) => (p.id === target.id ? { ...p, elements: [...p.elements, copy] } : p)),
+        activePageId: target.id,
+        selectedId: copy.id,
+      });
+      pushHistory();
+      toast.success(`تم نقل العنصر إلى «${target.name}»`);
     },
 
     addPage: (sizeId) => {

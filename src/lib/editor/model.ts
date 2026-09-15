@@ -1,4 +1,5 @@
 import { clamp, uid } from "@/lib/utils";
+import type { Numerals, TextFit } from "./arabic";
 
 /** A4 portrait, in millimetres — the historical default and page-size fallback. */
 export const A4 = { w: 210, h: 297 } as const;
@@ -92,16 +93,38 @@ export interface ElStyle {
   objectY?: number;
   stroke?: number;
   shape?: "rect" | "circle" | "rounded";
+  /** `shape` elements: id from `shapes.ts`. Absent means a plain rectangle. */
+  shapeId?: string;
   cols?: number;
   rows?: number;
   headerBg?: string;
   headerColor?: string;
   tableBg?: string;
+  /** Alternating row tint; empty means flat rows. */
+  stripeBg?: string;
   cellAlign?: "right" | "center" | "left";
   padding?: number;
   icon?: string;
   /** `progress` elements: filled share of the bar, 0–100. */
   value?: number;
+  /** `progress` elements: show the percentage number next to the caption. */
+  showValue?: boolean;
+  /** `progress` elements: linear bar or radial ring. */
+  variant?: "bar" | "ring";
+  /** Arabic typography: numeral style for digits inside the content. */
+  numerals?: Numerals;
+  /** How text behaves when it exceeds its box. */
+  textFit?: TextFit;
+  /** Draw the text vertically, top-to-bottom (titles on covers). */
+  writingMode?: "horizontal" | "vertical";
+  /** Apply the author's line breaks only; collapse soft wraps. */
+  preserveBreaks?: boolean;
+  /** Drop tashkeel and tatweel on render/export. */
+  stripTashkeel?: boolean;
+  /** Use a non-breaking space inside number+unit pairs (٪، م، ريال). */
+  bindUnits?: boolean;
+  /** Convert ASCII punctuation to its Arabic counterpart. */
+  arabicPunctuation?: boolean;
 }
 
 export interface CanvasEl {
@@ -363,6 +386,85 @@ export function textPreset(id: string): TextPreset {
   return TEXT_PRESETS.find((p) => p.id === id) || TEXT_PRESETS[2];
 }
 
+/**
+ * One-click shapes for the element palette. Each entry defers to a definition in
+ * `shapes.ts`, so the palette and the shape picker never drift apart.
+ */
+export interface ShapeTool {
+  id: string;
+  label: string;
+  shapeId: string;
+  w: number;
+  h: number;
+}
+
+export const SHAPE_TOOLS: ShapeTool[] = [
+  { id: "t-rect", label: "مستطيل", shapeId: "rect", w: 48, h: 28 },
+  { id: "t-rounded", label: "مستطيل مستدير", shapeId: "rounded", w: 48, h: 28 },
+  { id: "t-circle", label: "دائرة", shapeId: "circle", w: 32, h: 32 },
+  { id: "t-ellipse", label: "بيضاوي", shapeId: "ellipse", w: 44, h: 28 },
+  { id: "t-triangle", label: "مثلث", shapeId: "triangle", w: 34, h: 30 },
+  { id: "t-diamond", label: "معيّن", shapeId: "diamond", w: 32, h: 32 },
+  { id: "t-hexagon", label: "سداسي", shapeId: "hexagon", w: 34, h: 30 },
+  { id: "t-star5", label: "نجمة", shapeId: "star5", w: 32, h: 32 },
+  { id: "t-seal", label: "ختم مسنّن", shapeId: "seal", w: 36, h: 36 },
+  { id: "t-ribbon", label: "شريط", shapeId: "ribbon", w: 52, h: 20 },
+  { id: "t-banner", label: "لافتة", shapeId: "banner", w: 46, h: 26 },
+  { id: "t-callout", label: "فقاعة حديث", shapeId: "callout", w: 54, h: 30 },
+  { id: "t-shield", label: "درع", shapeId: "shield", w: 34, h: 38 },
+  { id: "t-arrow", label: "سهم", shapeId: "arrow-right", w: 46, h: 22 },
+  { id: "t-frame", label: "إطار", shapeId: "frame-rounded", w: 60, h: 40 },
+  { id: "t-arch", label: "قوس محراب", shapeId: "arch", w: 40, h: 48 },
+];
+
+/** Ready-made completion indicators (نسبة الإنجاز) with sensible box sizes. */
+export interface ProgressPreset {
+  id: string;
+  label: string;
+  sample: string;
+  w: number;
+  h: number;
+  style: Partial<ElStyle>;
+}
+
+export const PROGRESS_PRESETS: ProgressPreset[] = [
+  {
+    id: "bar",
+    label: "شريط إنجاز",
+    sample: "نسبة الإنجاز",
+    w: 120,
+    h: 16,
+    style: { value: 70, showValue: true },
+  },
+  {
+    id: "bar-thin",
+    label: "شريط رفيع",
+    sample: "التقدم",
+    w: 120,
+    h: 10,
+    style: { value: 45, showValue: true, fontSize: 9 },
+  },
+  {
+    id: "bar-thick",
+    label: "شريط عريض",
+    sample: "المؤشر العام",
+    w: 130,
+    h: 24,
+    style: { value: 82, showValue: true, fontSize: 12, radius: 6 },
+  },
+  {
+    id: "ring",
+    label: "دائرة كنسبة",
+    sample: "الإنجاز",
+    w: 44,
+    h: 44,
+    style: { value: 68, showValue: true, fontSize: 11 },
+  },
+];
+
+/** Multi-step progress sets, for a page of indicators filled at once. */
+export const PROGRESS_LEVELS = [10, 25, 50, 65, 75, 90, 100];
+
 export function placeholderImage(kind: "logo" | "image") {
   const title = kind === "logo" ? "LOGO" : "IMAGE";
   const bg = kind === "logo" ? "#ffffff" : "#f4f6fa";
@@ -452,7 +554,14 @@ export function createElement(type: ElType, over: Partial<CanvasEl> = {}, theme?
     shape: {
       w: 48,
       h: 28,
-      style: { fill: t.primary, borderColor: t.primary, borderWidth: 0, radius: 0, shape: "rect" },
+      style: {
+        fill: t.primary,
+        borderColor: t.primary,
+        borderWidth: 0,
+        radius: 0,
+        shape: "rect",
+        shapeId: "rect",
+      },
     },
     line: {
       w: 120,
@@ -516,6 +625,8 @@ export function createElement(type: ElType, over: Partial<CanvasEl> = {}, theme?
         fontWeight: 800,
         textAlign: "center",
         lineHeight: 1.3,
+        numerals: "western",
+        textFit: "shrink",
       },
     },
     progress: {
@@ -532,6 +643,7 @@ export function createElement(type: ElType, over: Partial<CanvasEl> = {}, theme?
         radius: 3,
         value: 70,
         textAlign: "right",
+        showValue: true,
       },
     },
   };

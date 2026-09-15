@@ -1,7 +1,11 @@
 import { useEffect, useRef } from "react";
 import { ICONS, cssFont, parseTable, type CanvasEl } from "@/lib/editor/model";
+import { prepareText } from "@/lib/editor/text-render";
 import { useEditor } from "@/lib/editor/store";
 import { cn } from "@/lib/utils";
+import { applyNumerals } from "@/lib/editor/arabic";
+import { safeImageSrc } from "@/lib/editor/images";
+import { ShapeGlyph } from "./ShapeGlyph";
 
 const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
 
@@ -119,9 +123,11 @@ function ElementContent({
   onBlur: () => void;
 }) {
   const s = el.style || {};
+  const prepared = prepareText(el);
+  const vertical = s.writingMode === "vertical";
   const textStyle: React.CSSProperties = {
     fontFamily: cssFont(s.fontFamily),
-    fontSize: `${s.fontSize || 14}pt`,
+    fontSize: `${prepared.fontSize}pt`,
     color: s.color || "#172033",
     fontWeight: s.fontWeight || 600,
     fontStyle: (s.fontStyle as React.CSSProperties["fontStyle"]) || "normal",
@@ -129,7 +135,16 @@ function ElementContent({
     lineHeight: s.lineHeight || 1.45,
     letterSpacing: s.letterSpacing ? `${s.letterSpacing}mm` : undefined,
     textShadow: s.textShadow || "none",
+    direction: "rtl",
+    writingMode: vertical ? "vertical-rl" : undefined,
+    textOrientation: vertical ? "mixed" : undefined,
   };
+
+  // While a text node is being edited it is contentEditable, and re-rendering the
+  // normalised string would fight the caret. `isContentEditable` distinguishes
+  // that state without extra React state, so raw content is shown mid-edit and
+  // the cleaned string appears once editing ends.
+  const renderText = (fallback: string) => (textRef.current?.isContentEditable ? el.content || "" : prepared.text || fallback);
 
   if (el.type === "text") {
     return (
@@ -140,7 +155,7 @@ function ElementContent({
         onPointerDown={(e) => e.currentTarget.isContentEditable && e.stopPropagation()}
         onBlur={onBlur}
       >
-        {el.content}
+        {renderText("")}
       </div>
     );
   }
@@ -164,17 +179,101 @@ function ElementContent({
         onPointerDown={(e) => e.currentTarget.isContentEditable && e.stopPropagation()}
         onBlur={onBlur}
       >
-        {el.content}
+        {renderText("")}
       </div>
     );
   }
 
   if (el.type === "progress") {
     const value = Math.max(0, Math.min(100, Number(s.value) || 0));
-    const barHeight = Math.max(2, el.h * 0.28);
+    const shown = s.numerals ? `${applyNumerals(String(value), s.numerals)}%` : `${value}%`;
+    // `textRef` sits on the caption alone. Putting it on the flex container would
+    // make the percentage and the bar part of `innerText`, so committing an edit
+    // would write "نسبة الإنجاز70%" back into the element's content.
+    const caption = (
+      <span
+        ref={textRef}
+        className="progress-caption"
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          outline: "none",
+        }}
+        onPointerDown={(e) => e.currentTarget.isContentEditable && e.stopPropagation()}
+        onBlur={onBlur}
+      >
+        {renderText("")}
+      </span>
+    );
+
+    if (s.variant === "ring") {
+      const size = Math.max(8, Math.min(el.w, el.h));
+      const thickness = Math.max(1.5, size * 0.11);
+      const r = (size - thickness) / 2;
+      const c = 2 * Math.PI * r;
+      return (
+        <div
+          className="el-box"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "1mm",
+            direction: "rtl",
+            fontFamily: cssFont(s.fontFamily),
+            color: s.color || "#172033",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ position: "relative", width: `${size}mm`, height: `${size}mm`, flexShrink: 0 }}>
+            <svg viewBox={`0 0 ${size} ${size}`} width="100%" height="100%">
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                fill="none"
+                stroke={s.background || "#e8ecf3"}
+                strokeWidth={thickness}
+              />
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                fill="none"
+                stroke={s.fill || "#071d3d"}
+                strokeWidth={thickness}
+                strokeLinecap="round"
+                strokeDasharray={`${(c * value) / 100} ${c}`}
+                transform={`rotate(-90 ${size / 2} ${size / 2})`}
+              />
+            </svg>
+            {s.showValue !== false && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: `${prepared.fontSize}pt`,
+                  fontWeight: s.fontWeight || 700,
+                }}
+              >
+                {shown}
+              </div>
+            )}
+          </div>
+          {caption}
+        </div>
+      );
+    }
+
+    const barHeight = Math.max(2, el.h * 0.3);
     return (
       <div
-        ref={textRef}
         className="el-box"
         style={{
           display: "flex",
@@ -183,16 +282,17 @@ function ElementContent({
           gap: "1.4mm",
           direction: "rtl",
           fontFamily: cssFont(s.fontFamily),
-          fontSize: `${s.fontSize || 10}pt`,
+          fontSize: `${prepared.fontSize}pt`,
           color: s.color || "#172033",
           fontWeight: s.fontWeight || 700,
+          overflow: "hidden",
         }}
-        onPointerDown={(e) => e.currentTarget.isContentEditable && e.stopPropagation()}
-        onBlur={onBlur}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <span>{el.content}</span>
-          <span style={{ color: s.fill || "#071d3d" }}>{value}%</span>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "2mm" }}>
+          {caption}
+          {s.showValue !== false && (
+            <span style={{ color: s.fill || "#071d3d", flexShrink: 0 }}>{shown}</span>
+          )}
         </div>
         <div
           style={{
@@ -200,6 +300,7 @@ function ElementContent({
             background: s.background || "#e8ecf3",
             borderRadius: `${s.radius ?? 3}mm`,
             overflow: "hidden",
+            flexShrink: 0,
           }}
         >
           <div style={{ width: `${value}%`, height: "100%", background: s.fill || "#071d3d" }} />
@@ -210,14 +311,12 @@ function ElementContent({
 
   if (el.type === "shape") {
     return (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          background: s.fill || "#071d3d",
-          border: `${s.borderWidth || 0}mm solid ${s.borderColor || "transparent"}`,
-          borderRadius: s.shape === "circle" ? "999mm" : `${s.radius || 0}mm`,
-        }}
+      <ShapeGlyph
+        style={s}
+        fill={s.fill || "#071d3d"}
+        stroke={s.borderColor || "transparent"}
+        borderWidthMm={Number(s.borderWidth) || 0}
+        box={{ w: el.w, h: el.h }}
       />
     );
   }
@@ -257,7 +356,8 @@ function ElementContent({
   }
 
   if (el.type === "image" || el.type === "logo" || el.type === "qr") {
-    if (!el.src) {
+    const src = safeImageSrc(el.src);
+    if (!src) {
       return (
         <div className="grid h-full w-full place-items-center bg-[#f4f6fa] text-[9pt] font-bold text-muted">
           لا توجد صورة
@@ -267,7 +367,7 @@ function ElementContent({
     return (
       <img
         alt=""
-        src={el.src}
+        src={src}
         draggable={false}
         style={{
           width: "100%",
@@ -311,15 +411,16 @@ function ElementContent({
           color: s.color || "#c6a05a",
           fontFamily: cssFont(s.fontFamily || "Amiri"),
           fontWeight: 700,
-          fontSize: `${s.fontSize || 12}pt`,
+          fontSize: `${prepared.fontSize}pt`,
           transform: "rotate(-12deg)",
           lineHeight: 1.2,
           whiteSpace: "pre-wrap",
+          overflow: "hidden",
         }}
         onPointerDown={(e) => e.currentTarget.isContentEditable && e.stopPropagation()}
         onBlur={onBlur}
       >
-        {el.content || "معتمد"}
+        {renderText("معتمد")}
       </div>
     );
   }
@@ -328,6 +429,7 @@ function ElementContent({
     const cols = s.cols || 3;
     const rows = s.rows || 4;
     const data = parseTable(el.content, cols, rows);
+    const stripe = s.stripeBg;
     return (
       <table
         className="h-full w-full border-collapse"
@@ -343,13 +445,14 @@ function ElementContent({
             <tr key={ri}>
               {row.map((cell, ci) => {
                 const Tag = ri === 0 ? "th" : "td";
+                const zebra = stripe && ri > 0 && ri % 2 === 0 ? stripe : undefined;
                 return (
                   <Tag
                     key={ci}
                     style={{
                       border: `${s.borderWidth ?? 0.3}mm solid ${s.borderColor || "#bfc7d6"}`,
                       padding: "1.6mm",
-                      background: ri === 0 ? s.headerBg || "#071d3d" : s.tableBg || "#fff",
+                      background: ri === 0 ? s.headerBg || "#071d3d" : zebra || s.tableBg || "#fff",
                       color: ri === 0 ? s.headerColor || "#fff" : s.color || "#172033",
                       fontWeight: ri === 0 ? 800 : 500,
                       textAlign: s.cellAlign || "right",
@@ -357,7 +460,7 @@ function ElementContent({
                       overflow: "hidden",
                     }}
                   >
-                    {cell}
+                    {applyNumerals(cell, s.numerals)}
                   </Tag>
                 );
               })}

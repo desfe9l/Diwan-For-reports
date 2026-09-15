@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Copy, GripVertical, Plus, Trash2 } from "lucide-react";
-import { pageSize } from "@/lib/editor/model";
+import { pageSize, type CanvasEl } from "@/lib/editor/model";
 import { useEditor } from "@/lib/editor/store";
 import { cn } from "@/lib/utils";
 
@@ -18,9 +18,11 @@ export function PageRail() {
   const duplicatePage = useEditor((s) => s.duplicatePage);
   const deletePage = useEditor((s) => s.deletePage);
   const reorderPages = useEditor((s) => s.reorderPages);
+  const renamePage = useEditor((s) => s.renamePage);
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
   const itemRefs = useRef<Record<string, HTMLLIElement | null>>({});
 
   const startDrag = (index: number) => (e: React.PointerEvent) => {
@@ -120,6 +122,7 @@ export function PageRail() {
                   {p.elements
                     .slice()
                     .sort((a, b) => a.z - b.z)
+                    .filter((el) => !el.hidden)
                     .slice(0, 14)
                     .map((el) => (
                       <span
@@ -133,14 +136,38 @@ export function PageRail() {
                           top: `${(el.y / size.h) * 100}%`,
                           width: `${(el.w / size.w) * 100}%`,
                           height: `${(el.h / size.h) * 100}%`,
-                          background: thumbnailColor(el.type, el.style?.fill || el.style?.color),
-                          borderRadius: el.type === "shape" && el.style?.shape === "circle" ? "999px" : "1px",
+                          background: thumbnailColor(el),
+                          borderRadius: isRound(el) ? "999px" : "1px",
                         }}
                       />
                     ))}
                 </span>
                 <span className="flex items-center justify-between gap-1 text-[10px]">
-                  <span className="max-w-[86px] truncate font-bold">{p.name}</span>
+                  {renaming === p.id ? (
+                    <input
+                      autoFocus
+                      defaultValue={p.name}
+                      aria-label="اسم الصفحة"
+                      onBlur={(e) => {
+                        renamePage(p.id, e.target.value.trim());
+                        setRenaming(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                        if (e.key === "Escape") setRenaming(null);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-[86px] rounded border border-navy-2 px-1 text-[10px] font-bold dark:bg-white/5"
+                    />
+                  ) : (
+                    <span
+                      className="max-w-[86px] truncate font-bold"
+                      onDoubleClick={() => setRenaming(p.id)}
+                      title="انقر مرتين لإعادة التسمية"
+                    >
+                      {p.name}
+                    </span>
+                  )}
                   <span className="tabular-nums text-muted">{i + 1}</span>
                 </span>
               </button>
@@ -175,10 +202,20 @@ export function PageRail() {
   );
 }
 
-function thumbnailColor(type: string, color?: string) {
-  if (color) return color;
-  if (type === "image" || type === "logo") return "#dbe2ec";
-  if (type === "table") return "#c7d0dd";
-  if (type === "line" || type === "divider") return "#c6a05a";
+function thumbnailColor(el: CanvasEl) {
+  const isLine = el.type === "line" || el.type === "divider";
+  if (isLine) return el.style?.color || el.style?.fill || "#c6a05a";
+  if (el.style?.fill) return el.style.fill;
+  if (el.style?.background) return el.style.background;
+  if (el.type === "image" || el.type === "logo") return "#dbe2ec";
+  if (el.type === "table") return "#c7d0dd";
+  if (el.style?.color) return el.style.color;
   return "#1f3556";
+}
+
+/** True for shapes whose silhouette is a circle/ellipse, drawn as a pill. */
+function isRound(el: CanvasEl) {
+  if (el.type !== "shape") return false;
+  const id = el.style?.shapeId || el.style?.shape || "";
+  return id === "circle" || id === "ellipse" || id === "seal";
 }

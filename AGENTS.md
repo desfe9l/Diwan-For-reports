@@ -330,6 +330,13 @@ in-browser say so and ship the best web-only build.
 - **`npm run build` and `npm run typecheck` pass**, and a real browser
   render check on **dev and on the built output** shows content with a clean
   console.
+- **Known pre-existing failure:** `node --test 'scripts/**/*.test.mjs'` reports
+  16 failures at the `baseline-original` tag and at every commit since. They read
+  fixture files under `.grok/skills/og/SKILL.md`, which is not part of this
+  repository (the source zip ships only `public/__grok/`), so the assertions
+  cannot resolve their inputs. They are unrelated to the editor. Verify editor
+  work instead with:
+  `node --experimental-strip-types --test src/lib/editor/*.test.ts`
 - Cohesive UI per **`design-ui`** (tokens, no-slop rules); no broken imports.
 - Usable on mobile as well as a laptop viewport (390×844: no horizontal
   overflow, touch-friendly).

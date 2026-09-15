@@ -2,6 +2,10 @@ import { toast } from "sonner";
 import { downloadBlob, downloadText } from "@/lib/utils";
 import { BRAND } from "@/lib/brand";
 import { cssFont, pageSize, parseTable, type CanvasEl, type Page, type Project } from "./model";
+import { prepareText } from "./text-render";
+import { shapeSvgMarkup, strokeToUnits } from "./shape-render";
+import { applyNumerals } from "./arabic";
+import { safeImageSrc } from "./images";
 
 export type ExportFormat = "pdf" | "pptx" | "docx" | "png" | "jpg" | "html" | "json";
 
@@ -260,33 +264,63 @@ function elHtml(el: CanvasEl): string {
   const wrap = (inner: string) =>
     `<div class="el" style="left:${num(el.x, 0, -1e4, 1e4)}mm;top:${num(el.y, 0, -1e4, 1e4)}mm;width:${num(el.w, 40, 0, 1e4)}mm;height:${num(el.h, 20, 0, 1e4)}mm;transform:rotate(${num(el.rotation, 0, -3600, 3600)}deg);opacity:${num(el.opacity, 1, 0, 1)};z-index:${num(el.z, 1, -1e4, 1e4)};box-shadow:${esc(s.shadow || "none")}">${inner}</div>`;
 
+  /** Mirror of the canvas text options so the exported file matches the screen. */
+  const text = prepareText(el);
+  const verticalCss = s.writingMode === "vertical" ? "writing-mode:vertical-rl;text-orientation:mixed;" : "";
+  // `prepareText` already applied the numeral style, so the string is used as-is.
+  const body = (fallback = "") => formatMultiline(text.text || fallback);
+
   if (el.hidden) return "";
   if (el.type === "text") {
     return wrap(
-      `<div class="text" style="font-family:${cssFont(s.fontFamily)};font-size:${num(s.fontSize, 14, 4, 400)}pt;color:${cssColor(s.color, "#172033")};font-weight:${num(s.fontWeight, 600, 100, 900)};text-align:${cssKeyword(s.textAlign, TEXT_ALIGN, "right")};line-height:${num(s.lineHeight, 1.45, 0.5, 5)};font-style:${cssKeyword(s.fontStyle, FONT_STYLE, "normal")};letter-spacing:${num(s.letterSpacing, 0, -10, 50)}mm">${formatMultiline(el.content || "")}</div>`,
+      `<div class="text" style="font-family:${cssFont(s.fontFamily)};font-size:${num(text.fontSize, 14, 4, 400)}pt;color:${cssColor(s.color, "#172033")};font-weight:${num(s.fontWeight, 600, 100, 900)};text-align:${cssKeyword(s.textAlign, TEXT_ALIGN, "right")};line-height:${num(s.lineHeight, 1.45, 0.5, 5)};font-style:${cssKeyword(s.fontStyle, FONT_STYLE, "normal")};letter-spacing:${num(s.letterSpacing, 0, -10, 50)}mm;direction:rtl;${verticalCss}">${body()}</div>`,
     );
   }
   if (el.type === "box" || el.type === "stat") {
     return wrap(
-      `<div class="box" style="background:${cssColor(s.fill || s.background, "#f7f8fb")};border:${num(s.borderWidth, 0.35, 0, 50)}mm solid ${cssColor(s.borderColor, "#d9dee8")};border-radius:${num(s.radius, 4, 0, 500)}mm;padding:${num(s.padding, 4, 0, 200)}mm;font-family:${cssFont(s.fontFamily)};font-size:${num(s.fontSize, 12, 4, 400)}pt;color:${cssColor(s.color, "#172033")};font-weight:${num(s.fontWeight, 600, 100, 900)};text-align:${cssKeyword(s.textAlign, TEXT_ALIGN, "right")};line-height:${num(s.lineHeight, 1.5, 0.5, 5)}">${formatMultiline(el.content || "")}</div>`,
+      `<div class="box" style="background:${cssColor(s.fill || s.background, "#f7f8fb")};border:${num(s.borderWidth, 0.35, 0, 50)}mm solid ${cssColor(s.borderColor, "#d9dee8")};border-radius:${num(s.radius, 4, 0, 500)}mm;padding:${num(s.padding, 4, 0, 200)}mm;font-family:${cssFont(s.fontFamily)};font-size:${num(text.fontSize, 12, 4, 400)}pt;color:${cssColor(s.color, "#172033")};font-weight:${num(s.fontWeight, 600, 100, 900)};text-align:${cssKeyword(s.textAlign, TEXT_ALIGN, "right")};line-height:${num(s.lineHeight, 1.5, 0.5, 5)};direction:rtl;${verticalCss}">${body()}</div>`,
     );
   }
   if (el.type === "progress") {
     const value = num(s.value, 0, 0, 100);
+    const shown = s.numerals ? `${applyNumerals(String(value), s.numerals)}%` : `${value}%`;
+    const valueHtml = s.showValue === false ? "" : `<span style="flex-shrink:0">${shown}</span>`;
+
+    if (s.variant === "ring") {
+      const size = Math.max(8, Math.min(num(el.w, 40, 0, 1e4), num(el.h, 40, 0, 1e4)));
+      const thickness = Math.max(1.5, size * 0.11);
+      const r = (size - thickness) / 2;
+      const circumference = 2 * Math.PI * r;
+      const dash = (circumference * value) / 100;
+      return wrap(
+        `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1mm;direction:rtl;overflow:hidden;font-family:${cssFont(s.fontFamily)};color:${cssColor(s.color, "#172033")}">
+          <div style="position:relative;width:${size}mm;height:${size}mm;flex-shrink:0">
+            <svg viewBox="0 0 ${size} ${size}" width="100%" height="100%">
+              <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${cssColor(s.background, "#e8ecf3")}" stroke-width="${thickness}"/>
+              <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${cssColor(s.fill, "#071d3d")}" stroke-width="${thickness}" stroke-linecap="round" stroke-dasharray="${dash} ${circumference}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
+            </svg>
+            <div style="position:absolute;inset:0;display:grid;place-items:center;font-size:${num(text.fontSize, 11, 4, 400)}pt;font-weight:${num(s.fontWeight, 700, 100, 900)}">${shown}</div>
+          </div>
+          <span class="progress-caption" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${body()}</span>
+        </div>`,
+      );
+    }
+
     return wrap(
-      `<div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;gap:1.4mm;direction:rtl;font-family:${cssFont(s.fontFamily)}">
-        <div style="display:flex;justify-content:space-between;font-size:${num(s.fontSize, 10, 4, 400)}pt;font-weight:${num(s.fontWeight, 700, 100, 900)};color:${cssColor(s.color, "#172033")}"><span>${formatMultiline(el.content || "")}</span><span>${value}%</span></div>
-        <div style="height:${Math.max(2, num(el.h, 16, 0, 1e4) * 0.28)}mm;background:${cssColor(s.background, "#e8ecf3")};border-radius:${num(s.radius, 3, 0, 500)}mm;overflow:hidden"><div style="width:${value}%;height:100%;background:${cssColor(s.fill, "#071d3d")}"></div></div>
+      `<div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;gap:1.4mm;direction:rtl;overflow:hidden;font-family:${cssFont(s.fontFamily)}">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:2mm;font-size:${num(text.fontSize, 10, 4, 400)}pt;font-weight:${num(s.fontWeight, 700, 100, 900)};color:${cssColor(s.color, "#172033")}"><span class="progress-caption" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${body()}</span>${valueHtml}</div>
+        <div style="height:${Math.max(2, num(el.h, 16, 0, 1e4) * 0.3)}mm;background:${cssColor(s.background, "#e8ecf3")};border-radius:${num(s.radius, 3, 0, 500)}mm;overflow:hidden;flex-shrink:0"><div style="width:${value}%;height:100%;background:${cssColor(s.fill, "#071d3d")}"></div></div>
       </div>`,
     );
   }
   if (el.type === "shape") {
-    const radius =
-      cssKeyword(s.shape, ["circle"] as const, "") === "circle"
-        ? "999mm"
-        : `${num(s.radius, 0, 0, 500)}mm`;
+    const borderWidth = num(s.borderWidth, 0, 0, 50);
     return wrap(
-      `<div style="width:100%;height:100%;background:${cssColor(s.fill, "#071d3d")};border:${num(s.borderWidth, 0, 0, 50)}mm solid ${cssColor(s.borderColor, "transparent")};border-radius:${radius}"></div>`,
+      shapeSvgMarkup(s.shapeId || s.shape, {
+        fill: cssColor(s.fill, "#071d3d"),
+        stroke: cssColor(s.borderColor, "transparent"),
+        strokeUnits: strokeToUnits(borderWidth, { w: num(el.w, 40, 1, 1e4), h: num(el.h, 20, 1, 1e4) }),
+      }),
     );
   }
   if (el.type === "line") {
@@ -303,10 +337,7 @@ function elHtml(el: CanvasEl): string {
     );
   }
   if (el.type === "image" || el.type === "logo" || el.type === "qr") {
-    const src = String(el.src || "");
-    const safeSrc = /^(data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\s]+|https?:\/\/|blob:)/i.test(src)
-      ? src
-      : "";
+    const safeSrc = safeImageSrc(el.src);
     return wrap(
       `<img alt="" src="${esc(safeSrc)}" style="width:100%;height:100%;object-fit:${cssKeyword(s.objectFit, OBJECT_FIT, "cover")};object-position:${num(s.objectX, 50, 0, 100)}% ${num(s.objectY, 50, 0, 100)}%;border-radius:${num(s.radius, 0, 0, 500)}mm"/>`,
     );
@@ -318,26 +349,31 @@ function elHtml(el: CanvasEl): string {
   }
   if (el.type === "stamp") {
     return wrap(
-      `<div style="width:100%;height:100%;border-radius:999px;border:0.7mm double ${cssColor(s.borderColor || s.color, "#c6a05a")};color:${cssColor(s.color, "#c6a05a")};display:grid;place-items:center;text-align:center;font-family:${cssFont(s.fontFamily || "Amiri")};font-weight:700;font-size:${num(s.fontSize, 12, 4, 400)}pt;transform:rotate(-12deg)">${formatMultiline(el.content || "معتمد")}</div>`,
+      `<div style="width:100%;height:100%;border-radius:999px;border:0.7mm double ${cssColor(s.borderColor || s.color, "#c6a05a")};color:${cssColor(s.color, "#c6a05a")};display:grid;place-items:center;text-align:center;font-family:${cssFont(s.fontFamily || "Amiri")};font-weight:700;font-size:${num(text.fontSize, 12, 4, 400)}pt;transform:rotate(-12deg);overflow:hidden">${body("معتمد")}</div>`,
     );
   }
   if (el.type === "table") {
     const cols = num(s.cols, 3, 1, 60);
     const rows = num(s.rows, 4, 1, 400);
     const data = parseTable(el.content, cols, rows);
+    const stripe = cssColor(s.stripeBg, "");
     const cells = data
       .map((row, ri) => {
         const tag = ri === 0 ? "th" : "td";
         return `<tr>${row
-          .map(
-            (c) =>
-              `<${tag} style="border:${num(s.borderWidth, 0.3, 0, 50)}mm solid ${cssColor(s.borderColor, "#bfc7d6")};padding:2mm;text-align:${cssKeyword(s.cellAlign, TEXT_ALIGN, "right")};${ri === 0 ? `background:${cssColor(s.headerBg, "#071d3d")};color:${cssColor(s.headerColor, "#fff")}` : `background:${cssColor(s.tableBg, "#fff")};color:${cssColor(s.color, "#172033")}`}">${esc(c)}</${tag}>`,
-          )
+          .map((c) => {
+            const cellText = applyNumerals(c, s.numerals);
+            const rowBg =
+              ri === 0
+                ? `background:${cssColor(s.headerBg, "#071d3d")};color:${cssColor(s.headerColor, "#fff")}`
+                : `background:${ri % 2 === 0 && stripe ? stripe : cssColor(s.tableBg, "#fff")};color:${cssColor(s.color, "#172033")}`;
+            return `<${tag} style="border:${num(s.borderWidth, 0.3, 0, 50)}mm solid ${cssColor(s.borderColor, "#bfc7d6")};padding:2mm;text-align:${cssKeyword(s.cellAlign, TEXT_ALIGN, "right")};${rowBg}">${esc(cellText)}</${tag}>`;
+          })
           .join("")}</tr>`;
       })
       .join("");
     return wrap(
-      `<table style="width:100%;height:100%;border-collapse:collapse;table-layout:fixed;font-family:${cssFont(s.fontFamily)};font-size:${num(s.fontSize, 11, 4, 400)}pt;direction:rtl">${cells}</table>`,
+      `<table style="width:100%;height:100%;border-collapse:collapse;table-layout:fixed;font-family:${cssFont(s.fontFamily)};font-size:${num(text.fontSize, 11, 4, 400)}pt;direction:rtl">${cells}</table>`,
     );
   }
   return "";

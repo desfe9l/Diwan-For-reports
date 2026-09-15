@@ -16,6 +16,7 @@ import {
 import { Toaster, toast } from "sonner";
 import { useEditor, saveLabel, type SaveState } from "@/lib/editor/store";
 import { pageSize } from "@/lib/editor/model";
+import { fitImageBox, prepareImage } from "@/lib/editor/images";
 import { LeftPanel } from "./LeftPanel";
 import { RightPanel } from "./RightPanel";
 import { CanvasStage } from "./CanvasStage";
@@ -48,6 +49,49 @@ export function EditorApp() {
     document.body.classList.add("is-editor");
     return () => document.body.classList.remove("is-editor");
   }, []);
+
+  /**
+   * Shared by the file picker and canvas drag-and-drop.
+   *
+   * `at` places a dropped image where the pointer landed instead of the
+   * palette's default spot, which is what makes dropping feel direct.
+   */
+  const ingestImage = async (file: File, at?: { x: number; y: number }) => {
+    const api = useEditor.getState();
+    const intent = imageIntent.current;
+    try {
+      const img = await prepareImage(file);
+      const kind = intent.type === "logo" ? "logo" : "image";
+
+      if (intent.type === "replace" && intent.targetId) {
+        // Swapping the source keeps the author's box, rotation, and effects.
+        api.updateElement(intent.targetId, { src: img.src });
+      } else {
+        const max = kind === "logo" ? { w: 40, h: 40 } : { w: 110, h: 90 };
+        const box = fitImageBox(img, max);
+        const page = api.pages.find((p) => p.id === api.activePageId);
+        const size = page ? pageSize(page) : { w: 210, h: 297 };
+        api.addElement(kind, {
+          src: img.src,
+          name: kind === "logo" ? "شعار" : "صورة",
+          w: box.w,
+          h: box.h,
+          x: at ? Math.max(0, Math.min(at.x - box.w / 2, size.w - box.w)) : undefined,
+          y: at ? Math.max(0, Math.min(at.y - box.h / 2, size.h - box.h)) : undefined,
+        });
+      }
+
+      if (img.resized) {
+        toast.message("تم تصغير الصورة للحفظ", {
+          description: "حُفظت بأبعاد مناسبة للطباعة لتخفيف حجم المشروع.",
+        });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "تعذر إضافة الصورة");
+    } finally {
+      imageIntent.current = { type: "image" };
+    }
+  };
 
   if (!hydrated) {
     return (
@@ -106,27 +150,8 @@ export function EditorApp() {
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = () => {
-            const src = String(reader.result);
-            const intent = imageIntent.current;
-            const api = useEditor.getState();
-            if (intent.type === "replace" && intent.targetId) {
-              api.updateElement(intent.targetId, { src });
-            } else {
-              const kind = intent.type === "logo" ? "logo" : "image";
-              api.addElement(kind, {
-                src,
-                name: kind === "logo" ? "شعار" : "صورة",
-                w: kind === "logo" ? 32 : 84,
-                h: kind === "logo" ? 32 : 56,
-              });
-            }
-          };
-          reader.onerror = () => toast.error("تعذر قراءة الصورة");
-          reader.readAsDataURL(file);
           e.target.value = "";
+          if (file) void ingestImage(file);
         }}
       />
 
@@ -137,6 +162,7 @@ export function EditorApp() {
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
+          e.target.value = "";
           if (!file) return;
           const reader = new FileReader();
           reader.onload = () => {
@@ -146,17 +172,19 @@ export function EditorApp() {
               .load()
               .then((loaded) => {
                 document.fonts.add(loaded);
+                // Registering with the store is what makes the font selectable;
+                // adding it to `document.fonts` alone leaves it invisible to the UI.
+                useEditor.getState().registerFont(fontName);
                 toast.success(`تم تحميل الخط: ${fontName}`);
               })
               .catch(() => toast.error("تعذر تحميل الخط — تأكد من صيغة الملف"));
           };
           reader.onerror = () => toast.error("تعذر قراءة ملف الخط");
           reader.readAsDataURL(file);
-          e.target.value = "";
         }}
       />
 
-      <Studio onOpenFile={openFile} onUpload={upload} onReplaceImage={replaceImage} />
+      <Studio onOpenFile={openFile} onUpload={upload} onReplaceImage={replaceImage} onDropImage={ingestImage} />
     </div>
   );
 }
@@ -165,10 +193,12 @@ function Studio({
   onOpenFile,
   onUpload,
   onReplaceImage,
+  onDropImage,
 }: {
   onOpenFile: () => void;
   onUpload: (kind: "image" | "logo" | "font") => void;
   onReplaceImage: (id: string) => void;
+  onDropImage: (file: File, at?: { x: number; y: number }) => Promise<void>;
 }) {
   const name = useEditor((s) => s.name);
   const setName = useEditor((s) => s.setName);
@@ -234,12 +264,17 @@ function Studio({
       const key = e.key.toLowerCase();
 
       if (meta && key === "z") {
+        // While the caret is in a field or the in-place text editor, the browser's
+        // own undo stack owns Cmd/Ctrl+Z — hijacking it would revert whole project
+        // states when the author meant to undo a few characters.
+        if (typing) return;
         e.preventDefault();
         if (e.shiftKey) redo();
         else undo();
         return;
       }
       if (meta && key === "y") {
+        if (typing) return;
         e.preventDefault();
         redo();
         return;
@@ -396,7 +431,7 @@ function Studio({
         </div>
 
         <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] lg:overflow-hidden">
-          <CanvasStage />
+          <CanvasStage onDropImage={onDropImage} />
           <PageRail />
         </div>
 

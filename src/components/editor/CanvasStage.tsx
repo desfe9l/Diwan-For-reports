@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { MIN_SIZE, pageSize, type CanvasEl, type Page } from "@/lib/editor/model";
 import { useEditor } from "@/lib/editor/store";
-import { clamp, round } from "@/lib/utils";
+import { clamp, cn, round } from "@/lib/utils";
 import { ElementNode } from "./ElementNode";
 
 type Op =
@@ -16,7 +16,7 @@ type Op =
     }
   | null;
 
-export function CanvasStage() {
+export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: { x: number; y: number }) => void }) {
   const pages = useEditor((s) => s.pages);
   const activePageId = useEditor((s) => s.activePageId);
   const selectedId = useEditor((s) => s.selectedId);
@@ -32,7 +32,30 @@ export function CanvasStage() {
 
   const opRef = useRef<Op>(null);
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
+  const [dropping, setDropping] = useState(false);
   const pageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  /**
+   * Translate a drop point into page millimetres.
+   *
+   * The drop target is resolved from the element under the pointer rather than
+   * a ref, because the author may drop onto any page — including one that is not
+   * the active page in the all-pages preview.
+   */
+  const dropPoint = (e: React.DragEvent): { x: number; y: number; pageId: string } | null => {
+    const target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-page-id]");
+    if (!target) return null;
+    const pageId = target.dataset.pageId;
+    const page = pages.find((p) => p.id === pageId);
+    if (!page) return null;
+    const size = pageSize(page);
+    const rect = target.getBoundingClientRect();
+    return {
+      pageId: page.id,
+      x: ((e.clientX - rect.left) / rect.width) * size.w,
+      y: ((e.clientY - rect.top) / rect.height) * size.h,
+    };
+  };
 
   const visible = useMemo(
     () => (previewAll ? pages : pages.filter((p) => p.id === activePageId)),
@@ -124,10 +147,36 @@ export function CanvasStage() {
 
   return (
     <div
-      className="studio-grid min-h-0 min-w-0 overflow-auto px-6 py-8"
+      className={cn("studio-grid relative min-h-0 min-w-0 overflow-auto px-6 py-8", dropping && "is-dropping")}
       dir="ltr"
       onPointerDown={() => select(null)}
+      onDragOver={(e) => {
+        if (!onDropImage || !e.dataTransfer.types.includes("Files")) return;
+        // Claiming the drop is what suppresses the browser's "open the file" handoff.
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        setDropping(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        setDropping(false);
+      }}
+      onDrop={(e) => {
+        setDropping(false);
+        if (!onDropImage) return;
+        const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith("image/"));
+        if (!file) return;
+        e.preventDefault();
+        const at = dropPoint(e);
+        if (at) setActivePage(at.pageId);
+        onDropImage(file, at ? { x: at.x, y: at.y } : undefined);
+      }}
     >
+      {dropping && (
+        <div className="pointer-events-none sticky top-0 z-50 mx-auto w-max rounded-full border border-gold/40 bg-white/95 px-4 py-1.5 text-[11px] font-extrabold text-navy shadow-sm dark:bg-[#161c26] dark:text-gold-2">
+          أفلت الصورة لإضافتها إلى الصفحة
+        </div>
+      )}
       <div className="mx-auto flex w-max min-w-full flex-col items-center gap-10" dir="rtl">
         {visible.map((page) => {
           const size = pageSize(page);
