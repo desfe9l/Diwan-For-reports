@@ -1,0 +1,284 @@
+import { useMemo, useRef, useState } from "react";
+import { A4, MIN_SIZE, type CanvasEl, type Page } from "@/lib/editor/model";
+import { useEditor } from "@/lib/editor/store";
+import { clamp, round } from "@/lib/utils";
+import { ElementNode } from "./ElementNode";
+
+type Op =
+  | {
+      kind: "move" | "resize" | "rotate";
+      id: string;
+      handle?: string;
+      startX: number;
+      startY: number;
+      orig: CanvasEl;
+      pageId: string;
+    }
+  | null;
+
+export function CanvasStage() {
+  const pages = useEditor((s) => s.pages);
+  const activePageId = useEditor((s) => s.activePageId);
+  const selectedId = useEditor((s) => s.selectedId);
+  const zoom = useEditor((s) => s.zoom);
+  const previewAll = useEditor((s) => s.previewAll);
+  const showGrid = useEditor((s) => s.showGrid);
+  const snapGrid = useEditor((s) => s.snapGrid);
+  const snapElements = useEditor((s) => s.snapElements);
+  const select = useEditor((s) => s.select);
+  const replaceElement = useEditor((s) => s.replaceElement);
+  const commit = useEditor((s) => s.commit);
+  const setActivePage = useEditor((s) => s.setActivePage);
+
+  const opRef = useRef<Op>(null);
+  const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
+  const pageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const visible = previewAll ? pages : pages.filter((p) => p.id === activePageId);
+
+  const mmFromEvent = (e: PointerEvent | React.PointerEvent, pageEl: HTMLElement) => {
+    const rect = pageEl.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * A4.w,
+      y: ((e.clientY - rect.top) / rect.height) * A4.h,
+    };
+  };
+
+  const startOp = (
+    e: React.PointerEvent,
+    page: Page,
+    el: CanvasEl,
+    kind: "move" | "resize" | "rotate",
+    handle?: string,
+  ) => {
+    if (el.locked) {
+      select(el.id);
+      return;
+    }
+    e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    select(el.id);
+    setActivePage(page.id);
+    const pageEl = pageRefs.current[page.id];
+    if (!pageEl) return;
+    const p = mmFromEvent(e, pageEl);
+    opRef.current = {
+      kind,
+      id: el.id,
+      handle,
+      startX: p.x,
+      startY: p.y,
+      orig: { ...el, style: { ...el.style } },
+      pageId: page.id,
+    };
+
+    const move = (ev: PointerEvent) => {
+      const op = opRef.current;
+      if (!op) return;
+      const node = pageRefs.current[op.pageId];
+      if (!node) return;
+      const cur = mmFromEvent(ev, node);
+      const dx = cur.x - op.startX;
+      const dy = cur.y - op.startY;
+      const next: CanvasEl = { ...op.orig, style: { ...op.orig.style } };
+      const others = pages.find((p) => p.id === op.pageId)?.elements.filter((x) => x.id !== op.id && !x.hidden) || [];
+
+      if (op.kind === "move") {
+        next.x = op.orig.x + dx;
+        next.y = op.orig.y + dy;
+        applySnap(next, others, snapGrid, snapElements, setGuides);
+      } else if (op.kind === "resize") {
+        resizeByHandle(next, op.orig, op.handle || "se", dx, dy, ev.shiftKey);
+      } else if (op.kind === "rotate") {
+        const cx = op.orig.x + op.orig.w / 2;
+        const cy = op.orig.y + op.orig.h / 2;
+        const a0 = Math.atan2(op.startY - cy, op.startX - cx);
+        const a1 = Math.atan2(cur.y - cy, cur.x - cx);
+        next.rotation = round(((op.orig.rotation || 0) + ((a1 - a0) * 180) / Math.PI) % 360);
+      }
+      next.w = clamp(next.w, MIN_SIZE, A4.w);
+      next.h = clamp(next.h, MIN_SIZE, A4.h);
+      next.x = clamp(next.x, 0, A4.w - next.w);
+      next.y = clamp(next.y, 0, A4.h - next.h);
+      replaceElement(next, true);
+    };
+
+    const up = () => {
+      opRef.current = null;
+      setGuides({ v: [], h: [] });
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      commit();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  return (
+    <div className="studio-grid min-h-0 min-w-0 overflow-auto px-6 py-8" dir="ltr" onPointerDown={() => select(null)}>
+      <div className="mx-auto flex w-max min-w-full flex-col items-center gap-9" dir="rtl">
+        {visible.map((page, i) => (
+          <div key={page.id} className="page-frame" style={{ transform: `scale(${zoom})`, marginBottom: `${(297 * (zoom - 1)) / 2}px` }}>
+            <div className="mb-2 flex items-center justify-between text-[12px] text-muted" dir="rtl">
+              <strong className="text-ink dark:text-white">{page.name}</strong>
+              <span>
+                {previewAll ? `صفحة ${i + 1} من ${pages.length}` : "A4  ·  210 × 297 مم"}
+              </span>
+            </div>
+            <div
+              ref={(n) => {
+                pageRefs.current[page.id] = n;
+              }}
+              data-page-id={page.id}
+              className={`report-page ${showGrid ? "show-grid" : ""} ${page.id === activePageId ? "ring-2 ring-gold ring-offset-8" : ""}`}
+              style={{ background: page.bg || "#fff" }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                setActivePage(page.id);
+                select(null);
+              }}
+            >
+              {page.elements
+                .slice()
+                .sort((a, b) => a.z - b.z)
+                .map((el) => (
+                  <ElementNode
+                    key={el.id}
+                    el={el}
+                    selected={el.id === selectedId}
+                    interactive
+                    onPointerDown={(e, kind, handle) => startOp(e, page, el, kind, handle)}
+                  />
+                ))}
+              {page.id === activePageId &&
+                guides.v.map((x) => <div key={`v${x}`} className="guide-v" style={{ left: `${x}mm` }} />)}
+              {page.id === activePageId &&
+                guides.h.map((y) => <div key={`h${y}`} className="guide-h" style={{ top: `${y}mm` }} />)}
+            </div>
+          </div>
+        ))}
+      </div>
+      <ExportCapture pages={pages} />
+    </div>
+  );
+}
+
+/** Hidden 1:1 pages used by export capture */
+function ExportCapture({ pages }: { pages: Page[] }) {
+  return (
+    <div
+      id="export-root"
+      className="pointer-events-none fixed top-0 left-[-2400px] z-[-1] w-[210mm]"
+      aria-hidden
+    >
+      {pages.map((page) => (
+        <div
+          key={page.id}
+          data-export-page={page.id}
+          className="report-page"
+          style={{ background: page.bg || "#fff" }}
+        >
+          {page.elements
+            .slice()
+            .sort((a, b) => a.z - b.z)
+            .map((el) => (
+              <ElementNode key={el.id} el={el} selected={false} interactive={false} onPointerDown={() => {}} />
+            ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function resizeByHandle(next: CanvasEl, orig: CanvasEl, handle: string, dx: number, dy: number, lock: boolean) {
+  let { x, y, w, h } = orig;
+  if (handle.includes("e")) w = orig.w + dx;
+  if (handle.includes("s")) h = orig.h + dy;
+  if (handle.includes("w")) {
+    x = orig.x + dx;
+    w = orig.w - dx;
+  }
+  if (handle.includes("n")) {
+    y = orig.y + dy;
+    h = orig.h - dy;
+  }
+  if (lock) {
+    const ratio = orig.w / orig.h || 1;
+    if (handle === "e" || handle === "w") h = w / ratio;
+    else if (handle === "n" || handle === "s") w = h * ratio;
+    else h = w / ratio;
+  }
+  if (w < MIN_SIZE) {
+    if (handle.includes("w")) x = orig.x + orig.w - MIN_SIZE;
+    w = MIN_SIZE;
+  }
+  if (h < MIN_SIZE) {
+    if (handle.includes("n")) y = orig.y + orig.h - MIN_SIZE;
+    h = MIN_SIZE;
+  }
+  next.x = x;
+  next.y = y;
+  next.w = w;
+  next.h = h;
+}
+
+function applySnap(
+  el: CanvasEl,
+  others: CanvasEl[],
+  snapGrid: boolean,
+  snapEl: boolean,
+  setGuides: (g: { v: number[]; h: number[] }) => void,
+) {
+  const g = 5;
+  const v: number[] = [];
+  const h: number[] = [];
+  if (snapGrid) {
+    el.x = Math.round(el.x / g) * g;
+    el.y = Math.round(el.y / g) * g;
+  }
+  if (snapEl) {
+    const edges = [
+      0,
+      A4.w / 2,
+      A4.w,
+      ...others.flatMap((o) => [o.x, o.x + o.w / 2, o.x + o.w]),
+    ];
+    const hedges = [
+      0,
+      A4.h / 2,
+      A4.h,
+      ...others.flatMap((o) => [o.y, o.y + o.h / 2, o.y + o.h]),
+    ];
+    const mineV = [el.x, el.x + el.w / 2, el.x + el.w];
+    const mineH = [el.y, el.y + el.h / 2, el.y + el.h];
+    const thr = 1.4;
+    for (const m of mineV) {
+      for (const t of edges) {
+        if (Math.abs(m - t) < thr) {
+          el.x += t - m;
+          v.push(t);
+        }
+      }
+    }
+    for (const m of mineH) {
+      for (const t of hedges) {
+        if (Math.abs(m - t) < thr) {
+          el.y += t - m;
+          h.push(t);
+        }
+      }
+    }
+  }
+  setGuides({ v: [...new Set(v)], h: [...new Set(h)] });
+}
+
+export function useVisiblePages() {
+  const pages = useEditor((s) => s.pages);
+  const previewAll = useEditor((s) => s.previewAll);
+  const activePageId = useEditor((s) => s.activePageId);
+  return useMemo(
+    () => (previewAll ? pages : pages.filter((p) => p.id === activePageId)),
+    [pages, previewAll, activePageId],
+  );
+}
