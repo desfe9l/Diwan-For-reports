@@ -12,11 +12,36 @@ import { uid } from "@/lib/utils";
  */
 
 const DB_NAME = "faisal-reports";
-const DB_VERSION = 1;
+/**
+ * Bump this whenever a new object store is added. IndexedDB only fires
+ * `onupgradeneeded` when the requested version is higher than what the browser
+ * already holds, so an unchanged version silently leaves existing installs
+ * without the new store.
+ */
+const DB_VERSION = 3;
 const PROJECTS = "projects";
 const SETTINGS = "settings";
+const ASSETS = "assets";
 const LS_PROJECTS = "diwan-projects-v1";
 const LS_SETTINGS = "diwan-settings-v1";
+const LS_ASSETS = "diwan-assets-v1";
+
+/**
+ * A reusable uploaded image kept outside any one project.
+ *
+ * The author uploads a logo or a shape once and reaches for it again in later
+ * reports; retyping the upload every time is the slow part of the workflow.
+ * Assets live in their own store so deleting a project never removes them.
+ */
+export interface Asset {
+  id: string;
+  name: string;
+  /** `data:` URL — the same normalised form projects store. */
+  src: string;
+  w: number;
+  h: number;
+  addedAt: number;
+}
 
 export type SettingsKey = "activeProjectId" | "dark" | "zoom";
 
@@ -44,6 +69,10 @@ function openDb(): Promise<IDBDatabase | null> {
       }
       if (!db.objectStoreNames.contains(SETTINGS)) {
         db.createObjectStore(SETTINGS, { keyPath: "key" });
+      }
+      if (!db.objectStoreNames.contains(ASSETS)) {
+        const store = db.createObjectStore(ASSETS, { keyPath: "id" });
+        store.createIndex("addedAt", "addedAt");
       }
     };
     req.onsuccess = () => {
@@ -254,4 +283,76 @@ export async function clearAllProjects(): Promise<void> {
     return;
   }
   await tx(db, PROJECTS, "readwrite", (t) => request(t.objectStore(PROJECTS).clear()));
+}
+
+/**
+ * localStorage mirror for assets, used when IndexedDB is unavailable.
+ *
+ * Assets are data URLs like project images, so this path is a last resort that
+ * can hit the ~5 MB ceiling — it exists so a private window still opens, not so
+ * it can hold a real library.
+ */
+const assetFallback = {
+  all(): Asset[] {
+    try {
+      const raw = localStorage.getItem(LS_ASSETS);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? (parsed as Asset[]) : [];
+    } catch {
+      return [];
+    }
+  },
+  write(list: Asset[]) {
+    localStorage.setItem(LS_ASSETS, JSON.stringify(list));
+  },
+};
+
+export async function listAssets(): Promise<Asset[]> {
+  const db = await openDb();
+  if (!db) return assetFallback.all().sort((a, b) => b.addedAt - a.addedAt);
+  try {
+    const rows = await tx(db, ASSETS, "readonly", (t) => request(t.objectStore(ASSETS).getAll()));
+    return (rows as Asset[]).sort((a, b) => b.addedAt - a.addedAt);
+  } catch {
+    return [];
+  }
+}
+
+export async function saveAsset(asset: Omit<Asset, "id" | "addedAt"> & Partial<Asset>): Promise<Asset> {
+  const stamped: Asset = {
+    ...asset,
+    id: asset.id || uid("asset"),
+    addedAt: asset.addedAt || Date.now(),
+  };
+  const db = await openDb();
+  if (!db) {
+    assetFallback.write([stamped, ...assetFallback.all().filter((a) => a.id !== stamped.id)]);
+    return stamped;
+  }
+  await tx(db, ASSETS, "readwrite", (t) => request(t.objectStore(ASSETS).put(stamped)));
+  return stamped;
+}
+
+export async function deleteAsset(id: string): Promise<void> {
+  const db = await openDb();
+  if (!db) {
+    assetFallback.write(assetFallback.all().filter((a) => a.id !== id));
+    return;
+  }
+  await tx(db, ASSETS, "readwrite", (t) => request(t.objectStore(ASSETS).delete(id)));
+}
+
+export async function renameAsset(id: string, name: string): Promise<void> {
+  const db = await openDb();
+  if (!db) {
+    assetFallback.write(assetFallback.all().map((a) => (a.id === id ? { ...a, name } : a)));
+    return;
+  }
+  const row = (await tx(db, ASSETS, "readonly", (t) => request(t.objectStore(ASSETS).get(id)))) as
+    | Asset
+    | undefined;
+  if (!row) return;
+  await tx(db, ASSETS, "readwrite", (t) =>
+    request(t.objectStore(ASSETS).put({ ...row, name })),
+  );
 }

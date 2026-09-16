@@ -61,6 +61,44 @@ export interface CapturedPage {
 }
 
 /**
+ * Rasterise one selected element to a transparent PNG data URL.
+ *
+ * Used by "save to library": a shape the author arranged on the canvas (a
+ * divider, a seal, a decorated box) becomes a reusable picture. Scaled from the
+ * element's own millimetre box so the saved asset keeps its print resolution
+ * instead of the current zoom level.
+ */
+export async function captureElement(elId: string, exportScale: number): Promise<string | null> {
+  const node = document.querySelector<HTMLElement>(`[data-el-id="${CSS.escape(elId)}"]`);
+  if (!node) return null;
+  const html2canvas = (await import("html2canvas")).default;
+  await waitFrame();
+  await waitImages(node);
+  await ensureFonts(node);
+  const canvas = await html2canvas(node, {
+    scale: exportScale,
+    useCORS: true,
+    allowTaint: true,
+    // Selection handles are UI, not artwork — and CSS pseudo-elements are never
+    // captured, so only the real handle nodes need removing.
+    backgroundColor: null,
+    logging: false,
+    width: node.offsetWidth,
+    height: node.offsetHeight,
+    windowWidth: node.offsetWidth,
+    windowHeight: node.offsetHeight,
+    onclone: (doc) => {
+      doc.querySelectorAll(".handle, .rotate-handle").forEach((h) => h.remove());
+      // The selection ring is authoring chrome; it must not bake into the asset.
+      doc.querySelectorAll(".selected, .is-secondary, .locked").forEach((n) => {
+        n.classList.remove("selected", "is-secondary", "locked");
+      });
+    },
+  });
+  return canvas.toDataURL("image/png");
+}
+
+/**
  * Rasterise the hidden 1:1 desktop pages.
  *
  * `delayMs` is offered as an escape hatch for very heavy documents: a short

@@ -11,6 +11,7 @@ import {
   Eye,
   EyeOff,
   Grid2x2,
+  ImagePlus,
   Lock,
   Trash2,
   Unlock,
@@ -63,6 +64,44 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
   const setLeftTab = useEditor((s) => s.setLeftTab);
   const theme = THEMES[useEditor((s) => s.theme)];
   const [cellEditor, setCellEditor] = useState(false);
+  const [savingAsset, setSavingAsset] = useState(false);
+
+  /**
+   * Turn the selected element into a reusable picture.
+   *
+   * Rasterising the live node is what lets a *shape* — a divider, a seal, a
+   * decorated box — come back later as an image, so the shelf is not limited to
+   * things the author already had as files.
+   */
+  const saveToLibrary = async (el: CanvasEl) => {
+    if (savingAsset) return;
+    setSavingAsset(true);
+    try {
+      const { captureElement } = await import("@/lib/editor/export");
+      const src = await captureElement(el.id, 3);
+      if (!src) {
+        toast.error("تعذر التقاط العنصر", {
+          description: "حاول مرة أخرى، أو أعد تحميل الصفحة إذا تكرر الخطأ.",
+        });
+        return;
+      }
+      const saved = await useEditor.getState().addAsset({
+        name: el.name || TYPE_NAME[el.type],
+        src,
+        w: el.w,
+        h: el.h,
+      });
+      if (saved) toast.success(`تم حفظ "${saved.name}" في المكتبة`, {
+        description: "تجده في تبويب «عناصر» ← مكتبة العناصر.",
+      });
+    } catch (err) {
+      toast.error("تعذر حفظ العنصر في المكتبة", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setSavingAsset(false);
+    }
+  };
 
   // The font list is needed here for the family selector, so probe on first use
   // rather than making the author open the font tab just to populate the list.
@@ -1084,6 +1123,11 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                 label={el.hidden ? "إظهار" : "إخفاء"}
               />
             </div>
+            <Action
+              onClick={() => void saveToLibrary(el)}
+              icon={ImagePlus}
+              label="حفظ في المكتبة للرجوع إليه"
+            />
             <Action onClick={deleteSelected} icon={Trash2} label="حذف العنصر" danger />
           </div>
         )}

@@ -29,15 +29,20 @@ import {
   type ThemeId,
 } from "./model";
 import {
+  deleteAsset as removeAsset,
   deleteProject as removeProject,
   duplicateProject as copyProject,
   getProject,
   getSetting,
+  listAssets,
   listProjects,
   migrateLegacyProject,
+  renameAsset as renameAssetRow,
+  saveAsset,
   saveProject,
   setSetting,
   storageMode,
+  type Asset,
 } from "./storage";
 import { createProject, createTemplatePage } from "./templates";
 import { FONTS, LEGACY_STORE_KEY, TYPE_NAME, UI_KEY } from "./model";
@@ -132,6 +137,13 @@ interface EditorStore extends Project, Ui, History {
   projects: ProjectMeta[];
   projectsLoading: boolean;
   storage: StorageInfo;
+  /** Reusable uploaded images, newest first. */
+  assets: Asset[];
+  assetsLoading: boolean;
+  refreshAssets: () => Promise<void>;
+  addAsset: (asset: { name: string; src: string; w: number; h: number }) => Promise<Asset | null>;
+  removeAsset: (id: string) => Promise<void>;
+  renameAsset: (id: string, name: string) => Promise<void>;
   /** Bundled + detected + uploaded families, in display order. */
   fontChoices: FontChoice[];
   /** True once the one-off device probe has run. */
@@ -165,6 +177,14 @@ interface EditorStore extends Project, Ui, History {
   toggleSelect: (id: string) => void;
   /** Replace the selection wholesale (marquee, layers, select-all). */
   selectMany: (ids: string[]) => void;
+  /**
+   * Select every pickable element on the active page.
+   *
+   * Shared by the Cmd/Ctrl+A shortcut and the toolbar button so both apply the
+   * same rule: a group counts as one element, matching what a marquee over
+   * everything would pick up.
+   */
+  selectAll: () => void;
   /** Step into a group so its children can be picked individually. */
   enterGroup: (id: string | null) => void;
   /** Selected elements of the active page, primary first. */
@@ -397,6 +417,8 @@ export const useEditor = create<EditorStore>((set, get) => {
     projects: [],
     projectsLoading: true,
     storage: { mode: "indexeddb", persistent: true },
+    assets: [],
+    assetsLoading: true,
     fontChoices: bundledFontChoices(),
     fontsProbed: false,
 
@@ -463,6 +485,14 @@ export const useEditor = create<EditorStore>((set, get) => {
         set({ projectsLoading: false });
       }
 
+      // The asset shelf is independent of the project load: a corrupt or empty
+      // project list must still leave the author's saved logos reachable.
+      try {
+        await get().refreshAssets();
+      } catch {
+        set({ assetsLoading: false });
+      }
+
       document.documentElement.classList.toggle("dark", get().dark);
       document.documentElement.lang = "ar";
       document.documentElement.dir = "rtl";
@@ -473,6 +503,38 @@ export const useEditor = create<EditorStore>((set, get) => {
       set({ projectsLoading: true });
       const list = await listProjects();
       set({ projects: list, projectsLoading: false });
+    },
+
+    refreshAssets: async () => {
+      const assets = await listAssets();
+      set({ assets, assetsLoading: false });
+    },
+
+    addAsset: async (asset) => {
+      try {
+        const saved = await saveAsset(asset);
+        set({ assets: [saved, ...get().assets.filter((a) => a.id !== saved.id)] });
+        return saved;
+      } catch {
+        // A full or unavailable store must not lose the element the author is
+        // placing right now — only the "save for later" half fails.
+        toast.error("تعذر حفظ العنصر في المكتبة", {
+          description: "قد تكون مساحة التخزين ممتلئة. العنصر أُضيف إلى الصفحة على أي حال.",
+        });
+        return null;
+      }
+    },
+
+    removeAsset: async (id) => {
+      await removeAsset(id);
+      set({ assets: get().assets.filter((a) => a.id !== id) });
+    },
+
+    renameAsset: async (id, name) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      await renameAssetRow(id, trimmed);
+      set({ assets: get().assets.map((a) => (a.id === id ? { ...a, name: trimmed } : a)) });
     },
 
     createProject: async (pack, theme) => {
@@ -638,6 +700,13 @@ export const useEditor = create<EditorStore>((set, get) => {
       const keep = ids.filter((id) => pickable(page, s.enteredGroupId, id));
       set({ selectedIds: keep, selectedId: keep.length ? keep[keep.length - 1] : null });
     },
+
+    selectAll: () =>
+      get().selectMany(
+        (activePageOf(get())?.elements ?? [])
+          .filter((el) => !el.locked && !el.hidden)
+          .map((el) => el.id),
+      ),
 
     enterGroup: (id) => set({ enteredGroupId: id }),
 

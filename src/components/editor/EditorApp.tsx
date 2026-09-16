@@ -39,7 +39,7 @@ export function EditorApp() {
   const projectInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
   const fontInput = useRef<HTMLInputElement>(null);
-  const imageIntent = useRef<{ type: "image" | "logo" | "replace"; targetId?: string }>({ type: "image" });
+  const imageIntent = useRef<{ type: "image" | "logo" | "replace" | "library"; targetId?: string }>({ type: "image" });
 
   useEffect(() => {
     void hydrate();
@@ -67,6 +67,14 @@ export function EditorApp() {
       if (intent.type === "replace" && intent.targetId) {
         // Swapping the source keeps the author's box, rotation, and effects.
         api.updateElement(intent.targetId, { src: img.src });
+      } else if (intent.type === "library") {
+        await api.addAsset({
+          name: file.name.replace(/\.[^.]+$/, "").slice(0, 40) || "عنصر",
+          src: img.src,
+          w: img.width,
+          h: img.height,
+        });
+        toast.success("تمت إضافة العنصر إلى المكتبة");
       } else {
         const max = kind === "logo" ? { w: 40, h: 40 } : { w: 110, h: 90 };
         const box = fitImageBox(img, max);
@@ -106,7 +114,7 @@ export function EditorApp() {
   }
 
   const openFile = () => projectInput.current?.click();
-  const upload = (kind: "image" | "logo" | "font") => {
+  const upload = (kind: "image" | "logo" | "font" | "library") => {
     if (kind === "font") fontInput.current?.click();
     else {
       imageIntent.current = { type: kind };
@@ -197,7 +205,7 @@ function Studio({
   onDropImage,
 }: {
   onOpenFile: () => void;
-  onUpload: (kind: "image" | "logo" | "font") => void;
+  onUpload: (kind: "image" | "logo" | "font" | "library") => void;
   onReplaceImage: (id: string) => void;
   onDropImage: (file: File, at?: { x: number; y: number }) => Promise<void>;
 }) {
@@ -232,7 +240,7 @@ function Studio({
   const saveNow = useEditor((s) => s.saveNow);
   const group = useEditor((s) => s.group);
   const ungroup = useEditor((s) => s.ungroup);
-  const selectMany = useEditor((s) => s.selectMany);
+  const selectAll = useEditor((s) => s.selectAll);
   const enterGroup = useEditor((s) => s.enterGroup);
   const enteredGroupId = useEditor((s) => s.enteredGroupId);
 
@@ -316,9 +324,7 @@ function Studio({
       if (meta && key === "a") {
         if (typing) return;
         e.preventDefault();
-        // Selects the top level of the active page: a group counts as one
-        // element, matching what a marquee over everything would pick up.
-        selectMany(activePage.elements.filter((el) => !el.locked && !el.hidden).map((el) => el.id));
+        selectAll();
         return;
       }
       if (meta && key === "g") {
@@ -378,7 +384,7 @@ function Studio({
     activePage,
     group,
     ungroup,
-    selectMany,
+    selectAll,
     enterGroup,
     enteredGroupId,
   ]);
@@ -477,6 +483,15 @@ function Studio({
 
         <div className="flex shrink-0 items-center justify-end gap-1.5">
           <SaveBadge state={saveState} label={label} onClick={() => void saveNow()} />
+          <button
+            type="button"
+            onClick={selectAll}
+            disabled={!activePage?.elements.some((el) => !el.locked && !el.hidden)}
+            title="تحديد كل عناصر الصفحة (⌘A)"
+            className="hidden h-9 rounded-[8px] border border-line px-2.5 text-[12px] font-bold disabled:opacity-40 lg:inline-flex lg:items-center dark:border-white/10"
+          >
+            تحديد الكل
+          </button>
           <button
             type="button"
             onClick={() => toggle("previewAll")}

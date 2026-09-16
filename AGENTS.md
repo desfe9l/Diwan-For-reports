@@ -369,6 +369,34 @@ substring checks on the XML happily pass for files Word silently drops.
 Verify with:
 `node --experimental-strip-types --test src/lib/editor/office-export.test.ts`
 
+### Editor persistence contracts (`src/lib/editor/storage.ts`)
+
+- **A new IndexedDB object store needs a `DB_VERSION` bump.** `onupgradeneeded`
+  only fires when the requested version exceeds what the browser already holds,
+  so adding a `createObjectStore` call without bumping the constant leaves every
+  existing install without that store. The failure is a `NotFoundError` from
+  `transaction()`, not a missing-store error you can catch meaningfully — an
+  already-open v2 database silently keeps working for the stores it does have.
+- **Assets are a separate store from projects on purpose.** Deleting a project
+  must never take the author's saved logos and shapes with it; keep the library
+  independent and load it even when the project list fails.
+- **Opening the library is best-effort.** `listAssets` / `saveAsset` fall back to
+  a localStorage mirror so a private window still opens, but data URLs make that
+  path a last resort — surface the failure as a toast rather than throwing.
+
+### Shape and asset reuse flow
+
+The editor's "save to library" path is:
+`RightPanel` → `captureElement(elId, 3)` (`export.ts`, html2canvas on the element
+node, handles and selection ring stripped in `onclone`) → `addAsset` (store) →
+`saveAsset` (IndexedDB) → sidebar `AssetLibrary` → click to place as an `image`
+element. Images uploaded straight to the library go through `EditorApp`'s
+`imageIntent` with `type: "library"`.
+
+Verify interactively with a real mouse: drag an element, undo it, select all with
+the toolbar button and with Cmd/Ctrl+A, drag the whole selection, then save an
+element to the library, reload, and place it again.
+
 ---
 
 ## Quick reference

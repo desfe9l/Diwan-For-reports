@@ -43,6 +43,7 @@ import { PAGE_TEMPLATES, TEMPLATE_CATEGORIES, type TemplateCategoryId } from "@/
 import { useEditor, type LeftTab } from "@/lib/editor/store";
 import { cn } from "@/lib/utils";
 import { ShapePreview } from "./ShapePreview";
+import { AssetLibrary } from "./AssetLibrary";
 import { TablePicker } from "./TablePicker";
 
 const TABS: { id: LeftTab; label: string; icon: typeof Type }[] = [
@@ -91,7 +92,7 @@ const TOOL_GROUPS: { title: string; items: { type: ElType; label: string; icon: 
   },
 ];
 
-export function LeftPanel({ onUpload }: { onUpload: (kind: "image" | "logo" | "font") => void }) {
+export function LeftPanel({ onUpload }: { onUpload: (kind: "image" | "logo" | "font" | "library") => void }) {
   const tab = useEditor((s) => s.leftTab);
   const setLeftTab = useEditor((s) => s.setLeftTab);
   const addElement = useEditor((s) => s.addElement);
@@ -349,6 +350,8 @@ export function LeftPanel({ onUpload }: { onUpload: (kind: "image" | "logo" | "f
                 أو اسحب الصورة وأفلتها على الصفحة مباشرة — تُضاف في موضع الإفلات.
               </p>
             </section>
+
+            <AssetLibrary onUpload={() => onUpload("library")} />
 
             <button
               type="button"
