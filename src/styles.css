@@ -361,33 +361,32 @@ html.dark .studio-grid {
 .handle,
 .rotate-handle {
   position: absolute;
-  z-index: 20;
+  z-index: 50;
   background: #ffffff;
-  border: 2px solid #2563eb;
-  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.2);
+  border: 0.5mm solid #2563eb;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25);
 }
 
 .handle {
-  width: 8px;
-  height: 8px;
+  width: 3.2mm;
+  height: 3.2mm;
   border-radius: 50%;
 }
 
-.handle.nw { top: -8px; left: -8px; cursor: nwse-resize; }
-.handle.n  { top: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-.handle.ne { top: -8px; right: -8px; cursor: nesw-resize; }
-.handle.e  { top: 50%; right: -8px; transform: translateY(-50%); cursor: ew-resize; }
-.handle.se { bottom: -8px; right: -8px; cursor: nwse-resize; }
-.handle.s  { bottom: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-.handle.sw { bottom: -8px; left: -8px; cursor: nesw-resize; }
-.handle.w  { top: 50%; left: -8px; transform: translateY(-50%); cursor: ew-resize; }
+.handle.nw { top: -2.2mm; left: -2.2mm; cursor: nwse-resize; }
+.handle.n  { top: -2.2mm; left: calc(50% - 1.6mm); cursor: ns-resize; }
+.handle.ne { top: -2.2mm; right: -2.2mm; cursor: nesw-resize; }
+.handle.e  { top: calc(50% - 1.6mm); right: -2.2mm; cursor: ew-resize; }
+.handle.se { bottom: -2.2mm; right: -2.2mm; cursor: nwse-resize; }
+.handle.s  { bottom: -2.2mm; left: calc(50% - 1.6mm); cursor: ns-resize; }
+.handle.sw { bottom: -2.2mm; left: -2.2mm; cursor: nesw-resize; }
+.handle.w  { top: calc(50% - 1.6mm); left: -2.2mm; cursor: ew-resize; }
 
 .rotate-handle {
-  width: 10px;
-  height: 10px;
-  top: -24px;
-  left: 50%;
-  transform: translateX(-50%);
+  width: 4.2mm;
+  height: 4.2mm;
+  top: -10mm;
+  left: calc(50% - 2.1mm);
   border-radius: 50%;
   cursor: grab;
 }
