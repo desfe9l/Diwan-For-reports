@@ -178,7 +178,7 @@ html.dark .studio-grid {
   position: relative;
   width: 210mm;
   height: 297mm;
-  overflow: hidden;
+  overflow: visible; /* تم التعديل هنا ليسمح للعناصر بالخروج عن مساحة العمل البيضاء بحرية */
   direction: rtl;
   background: #fff;
   color: #172033;
@@ -202,7 +202,7 @@ html.dark .studio-grid {
 .canvas-el {
   position: absolute;
   transform-origin: center center;
-  overflow: visible; /* تم التعديل هنا لتظهر المقابض الخارجة ولا يتم قصها */
+  overflow: visible;
   touch-action: none;
   min-width: 3mm;
   min-height: 3mm;
