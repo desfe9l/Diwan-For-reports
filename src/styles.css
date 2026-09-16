@@ -373,19 +373,19 @@ html.dark .studio-grid {
   border-radius: 50%;
 }
 
-.handle.nw { top: -5.6mm; left: -5.6mm; cursor: nwse-resize; }
-.handle.n  { top: -5.6mm; left: calc(50% - 1.6mm); cursor: ns-resize; }
-.handle.ne { top: -5.6mm; right: -5.6mm; cursor: nesw-resize; }
-.handle.e  { top: calc(50% - 1.6mm); right: -5.6mm; cursor: ew-resize; }
-.handle.se { bottom: -5.6mm; right: -5.6mm; cursor: nwse-resize; }
-.handle.s  { bottom: -5.6mm; left: calc(50% - 1.6mm); cursor: ns-resize; }
-.handle.sw { bottom: -5.6mm; left: -5.6mm; cursor: nesw-resize; }
-.handle.w  { top: calc(50% - 1.6mm); left: -5.6mm; cursor: ew-resize; }
+.handle.nw { top: -7.2mm; left: -7.2mm; cursor: nwse-resize; }
+.handle.n  { top: -7.2mm; left: calc(50% - 1.6mm); cursor: ns-resize; }
+.handle.ne { top: -7.2mm; right: -7.2mm; cursor: nesw-resize; }
+.handle.e  { top: calc(50% - 1.6mm); right: -7.2mm; cursor: ew-resize; }
+.handle.se { bottom: -7.2mm; right: -7.2mm; cursor: nwse-resize; }
+.handle.s  { bottom: -7.2mm; left: calc(50% - 1.6mm); cursor: ns-resize; }
+.handle.sw { bottom: -7.2mm; left: -7.2mm; cursor: nesw-resize; }
+.handle.w  { top: calc(50% - 1.6mm); left: -7.2mm; cursor: ew-resize; }
 
 .rotate-handle {
   width: 4.2mm;
   height: 4.2mm;
-  top: -13mm;
+  top: -15mm;
   left: calc(50% - 2.1mm);
   border-radius: 50%;
   cursor: grab;
