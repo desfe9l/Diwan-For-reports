@@ -171,8 +171,8 @@ export function LeftPanel({ onUpload }: { onUpload: (kind: "image" | "logo" | "f
   const templates = PAGE_TEMPLATES.filter((t) => category === "all" || t.category === category);
 
   return (
-    <aside className="flex min-h-0 flex-col border-l border-line bg-white dark:border-white/10 dark:bg-[#161c26]">
-      <div className="grid grid-cols-7 gap-0.5 border-b border-line p-1.5 dark:border-white/10">
+    <aside className="flex h-full min-h-0 flex-col border-l border-line bg-white dark:border-white/10 dark:bg-[#161c26]">
+      <div className="grid shrink-0 grid-cols-7 gap-0.5 border-b border-line p-1.5 dark:border-white/10">
         {TABS.map((t) => {
           const Icon = t.icon;
           return (
@@ -195,7 +195,7 @@ export function LeftPanel({ onUpload }: { onUpload: (kind: "image" | "logo" | "f
         })}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto p-3">
+      <div className="editor-pane-scroll min-h-0 flex-1 overflow-auto p-3">
         {tab === "elements" && (
           <div className="grid gap-4">
             {pickerOpen && (

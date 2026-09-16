@@ -9,6 +9,9 @@ import { safeImageSrc } from "./images";
 
 export type ExportFormat = "pdf" | "pptx" | "docx" | "png" | "jpg" | "html" | "json";
 
+/** Formats that produce editable Office documents rather than flattened pages. */
+const OFFICE_FORMATS = new Set<ExportFormat>(["pptx", "docx"]);
+
 function waitFrame() {
   return new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 }
@@ -116,80 +119,117 @@ export async function exportPdf(pages: CapturedPage[], name: string) {
   pdf.save(`${name}.pdf`);
 }
 
-interface PptxSlider {
-  addImage: (o: { data: string; x: number; y: number; w: number; h: number }) => void;
+/**
+ * Export editable PowerPoint slides.
+ *
+ * Each page becomes a slide whose text, tables, shapes and pictures are real
+ * PowerPoint objects, so the deck can be corrected and restyled after export.
+ * This runs off the page model rather than the rendered DOM, so it needs no
+ * raster capture at all.
+ */
+export async function exportPptxEditable(pages: Page[], name: string) {
+  const { buildScene } = await import("./scene");
+  const { writePptx } = await import("./pptx-writer");
+  const blob = await writePptx(buildScene(pages), name);
+  downloadBlob(blob, `${name}.pptx`);
 }
 
-interface PptxWriter {
-  defineLayout: (o: { name: string; width: number; height: number }) => void;
-  layout: string;
-  author: string;
-  title: string;
-  addSlide: () => PptxSlider;
-  writeFile: (o: { fileName: string }) => Promise<unknown>;
+/**
+ * Export an editable Word document.
+ *
+ * Text arrives as real runs in floating frames, tables as Word tables, and
+ * shapes as native `wps:wsp` drawings with preset or custom geometry, so the
+ * document can be edited rather than being a set of page images.
+ */
+export async function exportDocxEditable(pages: Page[], name: string) {
+  const { buildScene } = await import("./scene");
+  const { writeDocx } = await import("./docx-writer");
+  const blob = await writeDocx({ scenes: buildScene(pages), title: name });
+  downloadBlob(blob, `${name}.docx`);
 }
 
-export async function exportPptx(pages: CapturedPage[], name: string) {
-  const mod = (await import("pptxgenjs")) as unknown as { default: new () => PptxWriter };
-  const pptx = new mod.default();
-  // PowerPoint measures inches: 1 mm = 25.4 in.
-  const inches = (mm: number) => mm / 25.4;
-  const layoutName = "ReportPage";
+/**
+ * Flatten captured pages into a Word document.
+ *
+ * The escape hatch for documents whose fonts or exotic shapes a viewer would
+ * mangle in the editable path: each page becomes one full-bleed picture, so the
+ * result is not editable but is an exact match for the design.
+ */
+export async function exportDocxRaster(pages: CapturedPage[], name: string) {
+  const { Document, ImageRun, Packer, Paragraph, convertMillimetersToTwip } = await import("docx");
   const first = pages[0];
-  pptx.defineLayout({ name: layoutName, width: inches(first.w), height: inches(first.h) });
-  pptx.layout = layoutName;
-  pptx.author = BRAND.owner;
-  pptx.title = name;
+  const landscape = first.w > first.h;
+  const section = {
+    page: {
+      size: {
+        width: convertMillimetersToTwip(first.w),
+        height: convertMillimetersToTwip(first.h),
+        orientation: landscape ? ("landscape" as const) : ("portrait" as const),
+      },
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+    },
+    children: pages.map(
+      (p) =>
+        new Paragraph({
+          spacing: { before: 0, after: 0 },
+          children: [
+            new ImageRun({
+              type: "png",
+              data: pngBytes(p.canvas),
+              transformation: { width: p.w, height: p.h },
+            }),
+          ],
+        }),
+    ),
+  };
+  const doc = new Document({ sections: [section] });
+  downloadBlob(await Packer.toBlob(doc), `${name}.docx`);
+}
+
+/**
+ * Flatten captured pages into a PowerPoint deck.
+ *
+ * One full-bleed picture per slide. Like the Word raster path this trades
+ * editability for a pixel-exact match, and is the fallback when the editable
+ * path cannot represent a design faithfully.
+ */
+export async function exportPptxRaster(pages: CapturedPage[], name: string) {
+  const PptxGenJS = (await import("pptxgenjs")).default;
+  const pptx = new PptxGenJS();
+  pptx.rtlMode = true;
+  const first = pages[0];
+  const layout = "page";
+  pptx.defineLayout({ name: layout, width: first.w / 25.4, height: first.h / 25.4 });
+  pptx.layout = layout;
   pages.forEach((p) => {
     const slide = pptx.addSlide();
-    slide.addImage({ data: jpegData(p.canvas), x: 0, y: 0, w: inches(p.w), h: inches(p.h) });
+    slide.addImage({
+      data: pngDataUrl(p.canvas),
+      x: 0,
+      y: 0,
+      w: p.w / 25.4,
+      h: p.h / 25.4,
+    });
   });
-  await pptx.writeFile({ fileName: `${name}.pptx` });
-}
-
-export async function exportDocx(pages: CapturedPage[], name: string) {
-  const docx = await import("docx");
-  const { Document, Packer, Paragraph, ImageRun } = docx;
-  const mmToTwip = (docx as { convertMillimetersToTwip?: (n: number) => number })
-    .convertMillimetersToTwip
-    ? (n: number) => (docx as { convertMillimetersToTwip: (n: number) => number }).convertMillimetersToTwip(n)
-    : (n: number) => Math.round(n * 56.7);
-
-  const sections = await Promise.all(
-    pages.map(async (p) => {
-      const dataUrl = jpegData(p.canvas);
-      const buf = await (await fetch(dataUrl)).arrayBuffer();
-      // Word sizes images in CSS points: 1 mm ≈ 2.8346 pt on screen.
-      const px = (mm: number) => Math.round((mm / 25.4) * 96);
-      return {
-        properties: {
-          page: {
-            size: { width: mmToTwip(p.w), height: mmToTwip(p.h) },
-            margin: { top: mmToTwip(0), right: mmToTwip(0), bottom: mmToTwip(0), left: mmToTwip(0) },
-          },
-        },
-        children: [
-          new Paragraph({
-            spacing: { after: 0, before: 0 },
-            children: [
-              new ImageRun({
-                type: "jpg",
-                data: buf,
-                transformation: { width: px(p.w), height: px(p.h) },
-              }),
-            ],
-          }),
-        ],
-      };
-    }),
-  );
-  const doc = new Document({ creator: BRAND.owner, title: name, sections });
-  const blob = await Packer.toBlob(doc);
-  downloadBlob(blob, `${name}.docx`);
+  const blob = (await pptx.write({ outputType: "blob" })) as Blob;
+  downloadBlob(blob, `${name}.pptx`);
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number) {
   return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+/** PNG bytes for the Word writer, which needs a byte array rather than a URL. */
+function pngBytes(canvas: HTMLCanvasElement): Uint8Array {
+  const url = canvas.toDataURL("image/png");
+  const binary = atob(url.slice(url.indexOf(",") + 1));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function pngDataUrl(canvas: HTMLCanvasElement): string {
+  return canvas.toDataURL("image/png");
 }
 
 export async function exportImages(pages: CapturedPage[], name: string, type: "png" | "jpg") {
@@ -433,11 +473,22 @@ export function safeFileName(name: string) {
   return (name || "تقرير").replace(/[\\/:*?"<>|]+/g, "-").trim() || "تقرير";
 }
 
+/**
+ * Run one export.
+ *
+ * `pages` is the rasterised capture and is only required for the pixel formats.
+ * Word and PowerPoint are generated from the page model instead, so they stay
+ * fully editable and do not need a hidden DOM render to be present.
+ *
+ * `editableOffice` lets the user fall back to the flattened, pixel-perfect
+ * rendering when a viewer mangles an exotic font or shape.
+ */
 export async function runExport(
   format: ExportFormat,
   pages: CapturedPage[] | null,
   project: Project,
   selected: Page[],
+  editableOffice = true,
 ) {
   const name = safeFileName(project.name);
   try {
@@ -451,16 +502,39 @@ export async function runExport(
       toast.success("تم تنزيل ملف HTML المستقل");
       return;
     }
+
+    // Office formats read the model, so they never need a raster capture.
+    if (format === "pptx" || format === "docx") {
+      if (!selected.length) {
+        toast.error("لا توجد صفحات للتصدير");
+        return;
+      }
+      if (editableOffice) {
+        if (format === "pptx") await exportPptxEditable(selected, name);
+        else await exportDocxEditable(selected, name);
+        toast.success(
+          format === "pptx"
+            ? "تم تصدير عرض PowerPoint بنصوص وعناصر قابلة للتعديل"
+            : "تم تصدير مستند Word بنصوص وجداول قابلة للتعديل",
+        );
+        return;
+      }
+    }
     if (!pages?.length) {
       toast.error("تعذر التقاط الصفحات — أعد المحاولة");
       return;
     }
     if (format === "pdf") await exportPdf(pages, name);
-    if (format === "pptx") await exportPptx(pages, name);
-    if (format === "docx") await exportDocx(pages, name);
-    if (format === "png") await exportImages(pages, name, "png");
-    if (format === "jpg") await exportImages(pages, name, "jpg");
-    toast.success("تم التصدير بنجاح");
+    else if (format === "png") await exportImages(pages, name, "png");
+    else if (format === "jpg") await exportImages(pages, name, "jpg");
+    else if (format === "pptx") await exportPptxRaster(pages, name);
+    else if (format === "docx") await exportDocxRaster(pages, name);
+    else throw new Error(`صيغة غير مدعومة: ${format}`);
+    toast.success(
+      OFFICE_FORMATS.has(format)
+        ? "تم التصدير كصورة مطابقة للتصميم (بدون عناصر قابلة للتعديل)"
+        : "تم التصدير بنجاح",
+    );
   } catch (err) {
     console.error(err);
     toast.error("فشل التصدير. جرّب جودة أقل أو قلّل عدد الصور.");

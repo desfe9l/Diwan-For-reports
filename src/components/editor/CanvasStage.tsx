@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
-import { MIN_SIZE, pageSize, type CanvasEl, type Page } from "@/lib/editor/model";
+import { MIN_SIZE, pageSize, type Box, type CanvasEl, type Page } from "@/lib/editor/model";
 import { useEditor } from "@/lib/editor/store";
+import { prepareText } from "@/lib/editor/text-render";
 import { clamp, cn, round } from "@/lib/utils";
 import { ElementNode } from "./ElementNode";
 
@@ -11,29 +12,40 @@ type Op =
       handle?: string;
       startX: number;
       startY: number;
+      /** Positions of every element the gesture moves, keyed by id. */
+      origins: Record<string, { x: number; y: number }>;
       orig: CanvasEl;
       pageId: string;
     }
   | null;
 
+type Marquee = { x0: number; y0: number; x1: number; y1: number } | null;
+
 export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: { x: number; y: number }) => void }) {
   const pages = useEditor((s) => s.pages);
   const activePageId = useEditor((s) => s.activePageId);
-  const selectedId = useEditor((s) => s.selectedId);
+  const selectedIds = useEditor((s) => s.selectedIds);
+  const enteredGroupId = useEditor((s) => s.enteredGroupId);
   const zoom = useEditor((s) => s.zoom);
   const previewAll = useEditor((s) => s.previewAll);
   const showGrid = useEditor((s) => s.showGrid);
   const snapGrid = useEditor((s) => s.snapGrid);
   const snapElements = useEditor((s) => s.snapElements);
   const select = useEditor((s) => s.select);
+  const toggleSelect = useEditor((s) => s.toggleSelect);
+  const selectMany = useEditor((s) => s.selectMany);
+  const enterGroup = useEditor((s) => s.enterGroup);
   const replaceElement = useEditor((s) => s.replaceElement);
+  const fitTextBox = useEditor((s) => s.fitTextBox);
   const commit = useEditor((s) => s.commit);
   const setActivePage = useEditor((s) => s.setActivePage);
 
   const opRef = useRef<Op>(null);
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
+  const [marquee, setMarquee] = useState<Marquee>(null);
   const [dropping, setDropping] = useState(false);
   const pageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
   /**
    * Translate a drop point into page millimetres.
@@ -76,8 +88,17 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
     e.stopPropagation();
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    select(el.id);
     setActivePage(page.id);
+
+    /*
+     * Selection rules, in the order a design tool applies them:
+     *  · shift extends the selection, so several elements can be gathered;
+     *  · pressing an element that is already part of a multi-selection keeps the
+     *    whole selection, so it can be dragged as a unit;
+     *  · anything else replaces the selection with the pressed element.
+     */
+    if (e.shiftKey) toggleSelect(el.id);
+    else if (!selectedSet.has(el.id)) select(el.id);
 
     const pageEl = pageRefs.current[page.id];
     if (!pageEl) return;
@@ -93,12 +114,28 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
     });
 
     const start = toMm(e);
+
+    // The elements this gesture moves. A resize or rotate handle only ever acts
+    // on the pressed element; a plain drag carries the whole selection unless
+    // the press was a shift-toggle, which is a selection change and not a drag.
+    const draggingIds =
+      kind !== "move" || e.shiftKey ? [el.id] : selectedSet.has(el.id) ? selectedIds : [el.id];
+
+    const origins: Record<string, { x: number; y: number }> = {};
+    if (kind === "move" && !e.shiftKey) {
+      for (const id of draggingIds) {
+        const found = page.elements.find((x) => x.id === id);
+        if (found) origins[id] = { x: found.x, y: found.y };
+      }
+    }
+
     opRef.current = {
       kind,
       id: el.id,
       handle,
       startX: start.x,
       startY: start.y,
+      origins,
       orig: { ...el, style: { ...el.style } },
       pageId: page.id,
     };
@@ -116,7 +153,20 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
       if (op.kind === "move") {
         next.x = op.orig.x + dx;
         next.y = op.orig.y + dy;
-        applySnap(next, others, size, snapGrid, snapElements, setGuides);
+        applySnap(next, others, size, snapGrid, snapElements, setGuides, op.origins);
+        // Everything else in the selection follows the pressed element's final,
+        // snapped offset, so their spacing relative to each other is preserved.
+        const appliedDx = next.x - op.orig.x;
+        const appliedDy = next.y - op.orig.y;
+        for (const [id, origin] of Object.entries(op.origins)) {
+          if (id === op.id) continue;
+          const sibling = page.elements.find((x) => x.id === id);
+          if (!sibling) continue;
+          replaceElement(
+            { ...sibling, x: origin.x + appliedDx, y: origin.y + appliedDy },
+            true,
+          );
+        }
       } else if (op.kind === "resize") {
         resizeByHandle(next, op.orig, op.handle || "se", dx, dy, ev.shiftKey);
       } else if (op.kind === "rotate") {
@@ -140,6 +190,76 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       commit();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  /**
+   * Elements a click or marquee can pick, in the current grouping context.
+   *
+   * Outside a group that is the top-level list — a group counts as one element.
+   * Once the author steps into a group, its members become pickable instead, at
+   * their absolute page positions.
+   */
+  const pickables = (page: Page): { id: string; box: Box }[] => {
+    const entered = enteredGroupId ? page.elements.find((e) => e.id === enteredGroupId) : null;
+    if (entered?.children?.length) {
+      return entered.children.map((child) => ({
+        id: child.id,
+        box: { x: entered.x + child.x, y: entered.y + child.y, w: child.w, h: child.h },
+      }));
+    }
+    return page.elements.map((el) => ({ id: el.id, box: { x: el.x, y: el.y, w: el.w, h: el.h } }));
+  };
+
+  /** Rubber-band selection on empty page space. */
+  const startMarquee = (e: React.PointerEvent, page: Page) => {
+    const pageEl = pageRefs.current[page.id];
+    if (!pageEl) return;
+    const size = pageSize(page);
+    const rect = pageEl.getBoundingClientRect();
+    const toMm = (ev: { clientX: number; clientY: number }) => ({
+      x: ((ev.clientX - rect.left) / rect.width) * size.w,
+      y: ((ev.clientY - rect.top) / rect.height) * size.h,
+    });
+    const start = toMm(e);
+    const additive = e.shiftKey;
+    const before = additive ? [...selectedIds] : [];
+    const candidates = pickables(page);
+    let moved = false;
+
+    const move = (ev: PointerEvent) => {
+      const cur = toMm(ev);
+      moved = true;
+      const box: Box = {
+        x: Math.min(start.x, cur.x),
+        y: Math.min(start.y, cur.y),
+        w: Math.abs(cur.x - start.x),
+        h: Math.abs(cur.y - start.y),
+      };
+      setMarquee({ x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h });
+      // Intersection, not full containment: brushing across a row of elements is
+      // the gesture people actually use to grab them all.
+      const hits = candidates
+        .filter(
+          (p) =>
+            p.box.x < box.x + box.w &&
+            p.box.x + p.box.w > box.x &&
+            p.box.y < box.y + box.h &&
+            p.box.y + p.box.h > box.y,
+        )
+        .map((p) => p.id);
+      selectMany([...before, ...hits.filter((id) => !before.includes(id))]);
+    };
+
+    const up = () => {
+      setMarquee(null);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      // A press with no drag is a plain click on empty space, which clears the
+      // selection the way every design tool does.
+      if (!moved && !additive) select(null);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -181,10 +301,15 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
         {visible.map((page) => {
           const size = pageSize(page);
           const isActive = page.id === activePageId;
+          const entered = enteredGroupId ? page.elements.find((e) => e.id === enteredGroupId) : null;
+          const enteredKids = entered?.children ?? [];
           return (
             <div key={page.id} className="page-frame" style={{ transform: `scale(${zoom})` }}>
               <div className="mb-2 flex items-center justify-between gap-4 text-[12px] text-muted" dir="rtl">
-                <strong className="text-ink dark:text-white">{page.name}</strong>
+                <strong className="text-ink dark:text-white">
+                  {page.name}
+                  {entered && <span className="ms-2 font-semibold text-gold-2">· داخل «{entered.name}»</span>}
+                </strong>
                 <span className="tabular-nums">
                   {previewAll
                     ? `صفحة ${pages.findIndex((p) => p.id === page.id) + 1} من ${pages.length}`
@@ -199,22 +324,81 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
                 className={`report-page ${showGrid ? "show-grid" : ""} ${isActive ? "ring-2 ring-gold ring-offset-8" : ""}`}
                 style={{ width: `${size.w}mm`, height: `${size.h}mm`, background: page.bg || "#fff" }}
                 onPointerDown={(e) => {
+                  // Only a press on the page itself starts a marquee; presses on
+                  // elements are handled by the element and stop propagation.
+                  if (e.target !== e.currentTarget) return;
                   e.stopPropagation();
                   setActivePage(page.id);
-                  select(null);
+                  startMarquee(e, page);
                 }}
               >
                 {page.elements
                   .slice()
                   .sort((a, b) => a.z - b.z)
-                  .map((el) => (
-                    <ElementNode
-                      key={el.id}
-                      el={el}
-                      selected={el.id === selectedId}
-                      interactive
-                      onPointerDown={(e, kind, handle) => startOp(e, page, el, kind, handle)}
-                    />
+                  .map((el) => {
+                    // Stepped into this group: its frame is drawn for context and
+                    // its members become individually selectable nodes, instead of
+                    // the group behaving as one opaque element.
+                    if (entered && el.id === entered.id && enteredKids.length) {
+                      return (
+                        <div key={el.id}>
+                          <div
+                            className="canvas-el group-frame"
+                            style={{
+                              left: `${el.x}mm`,
+                              top: `${el.y}mm`,
+                              width: `${el.w}mm`,
+                              height: `${el.h}mm`,
+                              transform: `rotate(${el.rotation || 0}deg)`,
+                              zIndex: el.z,
+                            }}
+                          />
+                          {enteredKids
+                            .slice()
+                            .sort((a, b) => a.z - b.z)
+                            .map((child) => {
+                              const abs = { ...child, x: entered.x + child.x, y: entered.y + child.y };
+                              return (
+                                <ElementNode
+                                  key={child.id}
+                                  el={abs}
+                                  selected={selectedSet.has(child.id)}
+                                  multi={selectedSet.size > 1}
+                                  interactive
+                                  onPointerDown={(ev, kind, handle) => startOp(ev, page, abs, kind, handle)}
+                                />
+                              );
+                            })}
+                        </div>
+                      );
+                    }
+                    if (entered && el.id === entered.id) return null;
+                    return (
+                      <ElementNode
+                        key={el.id}
+                        el={el}
+                        selected={selectedSet.has(el.id)}
+                        multi={selectedSet.size > 1}
+                        interactive
+                        onEnterGroup={el.type === "group" ? () => enterGroup(el.id) : undefined}
+                        onPointerDown={(ev, kind, handle) => startOp(ev, page, el, kind, handle)}
+                      />
+                    );
+                  })}
+                {marquee && (
+                  <div
+                    className="marquee"
+                    style={{
+                      left: `${marquee.x0}mm`,
+                      top: `${marquee.y0}mm`,
+                      width: `${Math.abs(marquee.x1 - marquee.x0)}mm`,
+                      height: `${Math.abs(marquee.y1 - marquee.y0)}mm`,
+                    }}
+                  />
+                )}
+                {isActive &&
+                  page.elements.map((el) => (
+                    <OverflowFlag key={el.id} el={el} onFit={() => fitTextBox(el.id)} />
                   ))}
                 {isActive &&
                   guides.v.map((x) => <div key={`v${x}`} className="guide-v" style={{ left: `${x}mm` }} />)}
@@ -227,6 +411,34 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
       </div>
       <ExportCapture pages={pages} />
     </div>
+  );
+}
+
+/**
+ * Overflow marker for an element whose text does not fit its box.
+ *
+ * Drawn as a sibling of the element rather than inside it, because `.canvas-el`
+ * clips its own content — a badge placed inside would be cut off by exactly the
+ * element it is warning about. Clicking it applies the fix.
+ */
+function OverflowFlag({ el, onFit }: { el: CanvasEl; onFit: () => void }) {
+  if (el.hidden || el.type === "group") return null;
+  const prepared = prepareText(el);
+  if (!prepared.clipped) return null;
+  return (
+    <button
+      type="button"
+      className="overflow-badge"
+      style={{ left: `${el.x}mm`, top: `${el.y + el.h + 1}mm` }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onFit();
+      }}
+      title="النص أطول من الصندوق — اضغط لملاءمة الصندوق مع النص"
+    >
+      النص أطول من الصندوق
+    </button>
   );
 }
 
@@ -295,6 +507,13 @@ function resizeByHandle(next: CanvasEl, orig: CanvasEl, handle: string, dx: numb
   next.h = h;
 }
 
+/**
+ * Grid snap plus smart guides, returning the guide lines to draw.
+ *
+ * Candidate edges include the page edges/centres and every other element's
+ * edges and centres, so a dragged element can lock onto a neighbour's baseline
+ * as readily as onto the page axis.
+ */
 function applySnap(
   el: CanvasEl,
   others: CanvasEl[],
@@ -302,6 +521,7 @@ function applySnap(
   snapGrid: boolean,
   snapEl: boolean,
   setGuides: (g: { v: number[]; h: number[] }) => void,
+  moving: Record<string, unknown> = {},
 ) {
   const g = 5;
   const v: number[] = [];
@@ -311,8 +531,11 @@ function applySnap(
     el.y = Math.round(el.y / g) * g;
   }
   if (snapEl) {
-    const edges = [0, size.w / 2, size.w, ...others.flatMap((o) => [o.x, o.x + o.w / 2, o.x + o.w])];
-    const hedges = [0, size.h / 2, size.h, ...others.flatMap((o) => [o.y, o.y + o.h / 2, o.y + o.h])];
+    // Elements that are moving with this gesture are not candidates: snapping a
+    // dragged element to a sibling travelling beside it would fight the drag.
+    const stable = others.filter((o) => !moving[o.id]);
+    const edges = [0, size.w / 2, size.w, ...stable.flatMap((o) => [o.x, o.x + o.w / 2, o.x + o.w])];
+    const hedges = [0, size.h / 2, size.h, ...stable.flatMap((o) => [o.y, o.y + o.h / 2, o.y + o.h])];
     const mineV = [el.x, el.x + el.w / 2, el.x + el.w];
     const mineH = [el.y, el.y + el.h / 2, el.y + el.h];
     const thr = 1.4;
@@ -321,6 +544,7 @@ function applySnap(
         if (Math.abs(m - t) < thr) {
           el.x += t - m;
           v.push(t);
+          break;
         }
       }
     }
@@ -329,6 +553,7 @@ function applySnap(
         if (Math.abs(m - t) < thr) {
           el.y += t - m;
           h.push(t);
+          break;
         }
       }
     }

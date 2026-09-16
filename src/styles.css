@@ -45,6 +45,11 @@
     cursor: pointer;
   }
 
+  /*
+   * `height: 100%` needs a chain of definite heights all the way up. The editor
+   * shell relies on that chain (see `body.is-editor` below), so it is set here
+   * rather than inherited from an app-specific wrapper element.
+   */
   html {
     height: 100%;
     color-scheme: light;
@@ -54,8 +59,14 @@
     color-scheme: dark;
   }
 
-  /* Site pages scroll the document; the editor is a fixed-height shell that
-     scrolls its own panes. `body.is-editor` is toggled by the editor route. */
+  /*
+   * Site pages scroll the document; the editor is a fixed-height shell that
+   * scrolls its own panes. `body.is-editor` is toggled by the editor route.
+   *
+   * `dvh` tracks the *visible* viewport, so the shell stays the right height
+   * when iPadOS Safari collapses its toolbars; the `vh` pair above it is the
+   * fallback for engines without dynamic viewport units.
+   */
   body {
     min-height: 100%;
     margin: 0;
@@ -66,12 +77,12 @@
   }
 
   body.is-editor {
-    height: 100%;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
     overflow: hidden;
-  }
-
-  body.is-editor #app {
-    height: 100%;
+    /* The panes own the scrolling; the document must never bounce with them. */
+    overscroll-behavior: none;
   }
 
   html.dark body {
@@ -91,6 +102,48 @@
 }
 
 /* ---------- Editor canvas ---------- */
+
+/*
+ * The studio shell.
+ *
+ * `--safe-*` fall back to 0px so the same layout math works on a desktop
+ * browser and inside an iPadOS Safari window where the notch/home indicator
+ * insets are non-zero.
+ */
+.editor-shell {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  height: 100%;
+  min-height: 0;
+}
+
+/*
+ * Panes scroll independently. `overscroll-behavior: contain` stops a flick at
+ * the end of a panel list from scrolling the document behind it — the most
+ * common cause of "the whole page moved" on a touch device.
+ */
+.editor-pane-scroll {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/*
+ * Touch targets. On a coarse pointer the icon buttons grow to ~44px, the size
+ * Apple's guidelines call for, without changing the desktop density.
+ */
+@media (pointer: coarse) {
+  .editor-shell .icon-btn {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  .editor-shell .icon-btn svg {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+}
 
 .studio-grid {
   background-color: var(--color-paper);
@@ -160,8 +213,148 @@ html.dark .studio-grid {
   outline-offset: 0.8mm;
 }
 
+/*
+ * Secondary members of a multi-selection get a thinner, dashed ring so the
+ * handle-bearing primary element stays visually dominant — otherwise a
+ * nine-element selection is nine identical outlines with no focal point.
+ */
+.canvas-el.selected.is-secondary {
+  outline: 0.35mm dashed rgba(37, 99, 235, 0.75);
+  outline-offset: 0.6mm;
+}
+
 .canvas-el.locked {
   cursor: not-allowed;
+}
+
+/* Frame drawn around a group the author has stepped into. */
+.canvas-el.group-frame {
+  pointer-events: none;
+  outline: 0.4mm dashed rgba(198, 160, 90, 0.9);
+  outline-offset: 0.6mm;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Rubber-band selection rectangle. */
+.marquee {
+  position: absolute;
+  border: 0.4mm solid rgba(37, 99, 235, 0.85);
+  background: rgba(37, 99, 235, 0.1);
+  z-index: 60;
+  pointer-events: none;
+}
+
+/*
+ * Overflow warning.
+ *
+ * Rendered as a sibling of the element rather than inside it: `.canvas-el`
+ * clips its own content, so a badge placed inside would be cut off by
+ * exactly the element it is warning about.
+ */
+.overflow-badge {
+  position: absolute;
+  z-index: 30;
+  padding: 0.6mm 1.8mm;
+  border-radius: 999px;
+  border: 0;
+  background: #b45309;
+  color: #fff;
+  font-size: 8pt;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.overflow-badge:hover {
+  background: #92400e;
+}
+
+/*
+ * Arrangement bar.
+ *
+ * Positioned over the top of the canvas rather than in the layout flow: it is
+ * transient, and reserving permanent vertical space for a control that only
+ * exists during a multi-selection would shrink the page for everyone.
+ */
+.arrange-bar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  border: 1px solid #d8dee9;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14);
+}
+
+.dark .arrange-bar {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: #161c26;
+}
+
+.arrange-count {
+  padding-inline: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.dark .arrange-count {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.arrange-sep {
+  width: 1px;
+  height: 18px;
+  margin-inline: 3px;
+  background: #e2e8f0;
+}
+
+.dark .arrange-sep {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.arrange-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 0;
+  background: transparent;
+  color: #1e293b;
+  cursor: pointer;
+}
+
+.dark .arrange-btn {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.arrange-btn:hover:not(:disabled) {
+  background: #eef2f8;
+}
+
+.dark .arrange-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.arrange-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.arrange-btn.wide {
+  width: auto;
+  padding-inline: 8px;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .handle,
@@ -217,12 +410,19 @@ html.dark .studio-grid {
   pointer-events: none;
 }
 
+/*
+ * `word-break: normal` keeps Arabic words intact — breaking inside a joined
+ * word severs the letter forms and reads as a typo. `overflow-wrap: anywhere`
+ * still lets a single unbreakable token (a long URL, a mixed Latin acronym)
+ * wrap instead of overflowing the box.
+ */
 .el-text,
 .el-box {
   width: 100%;
   height: 100%;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+  word-break: normal;
   overflow: hidden;
 }
 

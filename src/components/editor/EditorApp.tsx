@@ -20,6 +20,7 @@ import { fitImageBox, prepareImage } from "@/lib/editor/images";
 import { LeftPanel } from "./LeftPanel";
 import { RightPanel } from "./RightPanel";
 import { CanvasStage } from "./CanvasStage";
+import { ArrangeBar } from "./ArrangeBar";
 import { PageRail } from "./PageRail";
 import { ExportDialog } from "./ExportDialog";
 import { cn } from "@/lib/utils";
@@ -227,7 +228,13 @@ function Studio({
   const updateElement = useEditor((s) => s.updateElement);
   const commit = useEditor((s) => s.commit);
   const selectedId = useEditor((s) => s.selectedId);
+  const selectedIds = useEditor((s) => s.selectedIds);
   const saveNow = useEditor((s) => s.saveNow);
+  const group = useEditor((s) => s.group);
+  const ungroup = useEditor((s) => s.ungroup);
+  const selectMany = useEditor((s) => s.selectMany);
+  const enterGroup = useEditor((s) => s.enterGroup);
+  const enteredGroupId = useEditor((s) => s.enteredGroupId);
 
   const activePage = pages.find((p) => p.id === activePageId) || pages[0];
   const activeSize = pageSize(activePage);
@@ -306,24 +313,49 @@ function Studio({
         pasteClipboard();
         return;
       }
+      if (meta && key === "a") {
+        if (typing) return;
+        e.preventDefault();
+        // Selects the top level of the active page: a group counts as one
+        // element, matching what a marquee over everything would pick up.
+        selectMany(activePage.elements.filter((el) => !el.locked && !el.hidden).map((el) => el.id));
+        return;
+      }
+      if (meta && key === "g") {
+        if (typing) return;
+        e.preventDefault();
+        if (e.shiftKey) ungroup();
+        else group();
+        return;
+      }
       if (typing) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         deleteSelected();
         return;
       }
-      if (e.key === "Escape") select(null);
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && selectedId) {
+      if (e.key === "Escape") {
+        // Escape steps out of a group first, then clears the selection — so it
+        // backs out of the nesting one level at a time instead of jumping to
+        // nothing and losing the author's place.
+        if (enteredGroupId) enterGroup(null);
+        else select(null);
+        return;
+      }
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && selectedIds.length) {
         e.preventDefault();
-        const el = useEditor.getState().pages.flatMap((p) => p.elements).find((x) => x.id === selectedId);
-        if (!el || el.locked) return;
+        const state = useEditor.getState();
+        const livePage = state.pages.find((p) => p.id === state.activePageId) || state.pages[0];
         const step = e.shiftKey ? 5 : 1;
-        const patch: { x?: number; y?: number } = {};
-        if (e.key === "ArrowUp") patch.y = el.y - step;
-        if (e.key === "ArrowDown") patch.y = el.y + step;
-        if (e.key === "ArrowRight") patch.x = el.x + step;
-        if (e.key === "ArrowLeft") patch.x = el.x - step;
-        updateElement(el.id, patch);
+        const dx = e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0;
+        const dy = e.key === "ArrowDown" ? step : e.key === "ArrowUp" ? -step : 0;
+        // Move the whole selection, not just the primary element, so a nudge
+        // after a marquee behaves the way the author expects.
+        for (const id of selectedIds) {
+          const el = livePage.elements.find((x) => x.id === id);
+          if (!el || el.locked) continue;
+          updateElement(id, { x: el.x + dx, y: el.y + dy }, true);
+        }
         commit();
       }
     };
@@ -340,16 +372,48 @@ function Studio({
     pasteClipboard,
     select,
     selectedId,
+    selectedIds,
     updateElement,
     commit,
+    activePage,
+    group,
+    ungroup,
+    selectMany,
+    enterGroup,
+    enteredGroupId,
   ]);
 
   const label = saveLabel(saveState, savedAt, Date.now());
 
+  /**
+   * Zoom so the whole page fits the canvas area.
+   *
+   * Measured from a stable reference: the page box is a fixed mm size, so the
+   * ratio of the viewport to the page is enough and no DOM measurement of the
+   * scaled element is needed (which would depend on the current zoom and drift
+   * on repeated presses).
+   */
+  const fitToScreen = () => {
+    const el = document.querySelector(".studio-grid");
+    if (!el) return setZoom(0.82);
+    const rect = el.getBoundingClientRect();
+    // 1mm ≈ 3.7795px at 96dpi; padding keeps a margin around the sheet.
+    const pagePxW = activeSize.w * 3.7795;
+    const pagePxH = activeSize.h * 3.7795;
+    const next = Math.min((rect.width - 96) / pagePxW, (rect.height - 128) / pagePxH);
+    setZoom(Math.max(0.2, Math.min(2, next)));
+  };
+
   return (
-    <div className="grid h-full min-h-0 grid-rows-[52px_minmax(0,1fr)] bg-paper dark:bg-[#111722]">
-      <header className="z-20 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-line bg-white px-3 dark:border-white/10 dark:bg-[#161c26]">
-        <div className="flex items-center gap-2">
+    /*
+     * Editor shell.
+     *
+     * Rows are `auto` (header) + `minmax(0,1fr)` (workspace), so the header may
+     * wrap on a narrow tablet without stealing height from the canvas.
+     */
+    <div className="editor-shell grid grid-rows-[auto_minmax(0,1fr)] bg-paper dark:bg-[#111722]">
+      <header className="z-20 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-line bg-white px-3 py-1.5 pt-[max(0.375rem,var(--safe-top))] pr-[max(0.75rem,var(--safe-right))] pl-[max(0.75rem,var(--safe-left))] dark:border-white/10 dark:bg-[#161c26]">
+        <div className="flex shrink-0 items-center gap-2">
           <a
             href="/"
             className="inline-flex h-9 items-center gap-1.5 rounded-[8px] border border-line px-2.5 text-[12px] font-extrabold dark:border-white/10"
@@ -364,7 +428,8 @@ function Studio({
           </div>
         </div>
 
-        <div className="flex min-w-0 items-center justify-center gap-1.5">
+        {/* Scrolls rather than clipping when the viewport cannot hold every control. */}
+        <div className="editor-pane-scroll order-last flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto md:order-none md:justify-center">
           <IconButton onClick={undo} disabled={past.length <= 1} title="تراجع (⌘Z)">
             <Undo2 className="size-4" />
           </IconButton>
@@ -375,7 +440,7 @@ function Studio({
             value={name}
             onChange={(e) => setName(e.target.value)}
             aria-label="اسم المشروع"
-            className="mx-1 hidden h-9 max-w-[240px] min-w-0 rounded-[8px] border border-line px-3 text-center text-[13px] font-bold outline-none focus:border-navy-2 md:block dark:border-white/10 dark:bg-white/5 dark:text-white"
+            className="mx-1 hidden h-9 max-w-[240px] min-w-0 rounded-[8px] border border-line px-3 text-center text-[13px] font-bold outline-none focus:border-navy-2 lg:block dark:border-white/10 dark:bg-white/5 dark:text-white"
           />
           <IconButton onClick={() => toggle("showGrid")} active={showGrid} title="الشبكة">
             <Grid3x3 className="size-4" />
@@ -383,20 +448,41 @@ function Studio({
           <IconButton onClick={() => setZoom(zoom - 0.08)} title="تصغير">
             <ZoomOut className="size-4" />
           </IconButton>
-          <span className="w-11 text-center text-[12px] font-bold tabular-nums">{Math.round(zoom * 100)}%</span>
+          <span className="w-11 shrink-0 text-center text-[12px] font-bold tabular-nums">
+            {Math.round(zoom * 100)}%
+          </span>
           <IconButton onClick={() => setZoom(zoom + 0.08)} title="تكبير">
             <ZoomIn className="size-4" />
           </IconButton>
+          {/*
+           * Fit/100% matter most on tablets, where the canvas is the only thing
+           * on screen and a fixed 82% can leave the page off-centre or oversized.
+           */}
+          <button
+            type="button"
+            onClick={fitToScreen}
+            title="ملاءمة العرض"
+            className="hidden h-9 shrink-0 items-center rounded-[8px] border border-line px-2 text-[11px] font-extrabold md:inline-flex dark:border-white/10"
+          >
+            ملاءمة
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoom(1)}
+            className="hidden h-9 shrink-0 items-center rounded-[8px] border border-line px-2 text-[11px] font-extrabold md:inline-flex dark:border-white/10"
+          >
+            100%
+          </button>
         </div>
 
-        <div className="flex items-center justify-end gap-1.5">
+        <div className="flex shrink-0 items-center justify-end gap-1.5">
           <SaveBadge state={saveState} label={label} onClick={() => void saveNow()} />
           <button
             type="button"
             onClick={() => toggle("previewAll")}
             aria-pressed={previewAll}
             className={cn(
-              "hidden h-9 rounded-[8px] border px-2.5 text-[12px] font-bold lg:inline-flex lg:items-center",
+              "hidden h-9 rounded-[8px] border px-2.5 text-[12px] font-bold xl:inline-flex xl:items-center",
               previewAll ? "border-navy bg-navy text-white" : "border-line dark:border-white/10",
             )}
           >
@@ -419,10 +505,20 @@ function Studio({
         </div>
       </header>
 
-      <div className="relative grid min-h-0 lg:h-full lg:grid-cols-[292px_minmax(0,1fr)_336px] lg:overflow-hidden">
+      {/*
+       * Workspace.
+       *
+       * `lg:grid-rows-[minmax(0,1fr)]` is what keeps the panes on screen: without
+       * a bounded row the implicit row sizes to the tallest panel's content, and
+       * the overflow is then clipped by `lg:overflow-hidden` — which is exactly
+       * how the lower properties controls became unreachable. The wrappers are
+       * `h-full min-h-0 overflow-hidden` so each panel's inner `flex-1
+       * overflow-auto` region is the thing that scrolls.
+       */}
+      <div className="relative grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden lg:grid-cols-[280px_minmax(0,1fr)_320px] xl:grid-cols-[292px_minmax(0,1fr)_336px]">
         <div
           className={cn(
-            "min-h-0",
+            "h-full min-h-0 overflow-hidden",
             "max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:w-[292px] max-lg:shadow-2xl",
             !leftOpen && "max-lg:hidden",
           )}
@@ -430,46 +526,76 @@ function Studio({
           <LeftPanel onUpload={onUpload} />
         </div>
 
-        <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] lg:overflow-hidden">
+        <div className="relative grid min-h-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden">
           <CanvasStage onDropImage={onDropImage} />
+          <ArrangeBar />
           <PageRail />
         </div>
 
         <div
           className={cn(
-            "min-h-0",
-            "max-lg:absolute max-lg:inset-y-0 max-lg:left-0 max-lg:z-30 max-lg:w-[320px] max-lg:shadow-2xl",
+            "h-full min-h-0 overflow-hidden",
+            "max-lg:absolute max-lg:z-30 max-lg:shadow-2xl",
+            // Landscape tablets keep the panel beside the canvas.
+            "max-lg:landscape:inset-y-0 max-lg:landscape:left-0 max-lg:landscape:w-[320px]",
+            // Portrait tablets get a bottom sheet, so the canvas keeps full width.
+            "max-lg:portrait:inset-x-0 max-lg:portrait:bottom-0 max-lg:portrait:h-[52%] max-lg:portrait:w-full max-lg:portrait:rounded-t-2xl max-lg:portrait:border-t max-lg:portrait:border-line",
             !rightOpen && "max-lg:hidden",
           )}
         >
           <RightPanel onReplaceImage={onReplaceImage} />
         </div>
 
-        <div className="absolute bottom-16 left-1/2 z-20 flex -translate-x-1/2 gap-2 lg:hidden">
-          <button
-            type="button"
-            onClick={() => toggle("leftOpen")}
-            className="h-10 rounded-full bg-navy px-4 text-[12px] font-extrabold text-white"
-          >
-            عناصر
-          </button>
-          <button
-            type="button"
-            onClick={() => addPage()}
-            className="h-10 rounded-full bg-navy px-4 text-[12px] font-extrabold text-white"
-          >
-            صفحة
-          </button>
-          <button
-            type="button"
-            onClick={() => toggle("rightOpen")}
-            className="h-10 rounded-full bg-navy px-4 text-[12px] font-extrabold text-white"
-          >
-            خصائص
-          </button>
-        </div>
+        {/*
+         * Small-screen chrome.
+         *
+         * One control at a time: the launcher only shows while both drawers are
+         * shut, and a single close chip takes over once one is open. Keeping the
+         * launcher visible over an open drawer would cover the very controls it
+         * was used to reveal.
+         */}
+        {!(leftOpen || rightOpen) && (
+          <div className="pointer-events-none absolute bottom-[152px] left-1/2 z-40 flex -translate-x-1/2 gap-2 lg:hidden">
+            <button
+              type="button"
+              onClick={() => toggle("leftOpen")}
+              className="pointer-events-auto h-10 rounded-full bg-navy px-4 text-[12px] font-extrabold text-white shadow-lg shadow-navy/25"
+            >
+              عناصر
+            </button>
+            <button
+              type="button"
+              onClick={() => addPage()}
+              className="pointer-events-auto h-10 rounded-full bg-navy px-4 text-[12px] font-extrabold text-white shadow-lg shadow-navy/25"
+            >
+              صفحة
+            </button>
+            <button
+              type="button"
+              onClick={() => toggle("rightOpen")}
+              className="pointer-events-auto h-10 rounded-full bg-navy px-4 text-[12px] font-extrabold text-white shadow-lg shadow-navy/25"
+            >
+              خصائص
+            </button>
+          </div>
+        )}
 
-        <p className="pointer-events-none absolute right-3 top-2 z-10 hidden text-[11px] text-muted lg:block">
+        {/* Top-centred, so it clears a side drawer on landscape and a bottom sheet on portrait. */}
+        {(leftOpen || rightOpen) && (
+          <button
+            type="button"
+            onClick={() => {
+              if (useEditor.getState().leftOpen) toggle("leftOpen");
+              if (useEditor.getState().rightOpen) toggle("rightOpen");
+            }}
+            className="absolute left-1/2 top-2 z-40 -translate-x-1/2 rounded-full border border-line bg-white/95 px-4 py-1.5 text-[12px] font-extrabold shadow-lg backdrop-blur-sm lg:hidden dark:border-white/15 dark:bg-[#161c26]/95"
+          >
+            إغلاق اللوحة
+          </button>
+        )}
+
+        {/* Pinned to the canvas pane, not the viewport, so it sits over the sheet area only. */}
+        <p className="pointer-events-none absolute right-3 top-2 z-10 hidden max-w-[calc(100%-1.5rem)] truncate rounded-full bg-white/85 px-2.5 py-1 text-[11px] text-muted backdrop-blur-sm lg:block dark:bg-[#161c26]/85">
           {activePage?.name} · {Math.round(activeSize.w)} × {Math.round(activeSize.h)} مم ·{" "}
           {activePage?.elements.length || 0} عنصر
         </p>
@@ -501,7 +627,7 @@ function IconButton({
       aria-label={title}
       aria-pressed={active}
       className={cn(
-        "grid size-9 place-items-center rounded-[8px] border disabled:opacity-40",
+        "icon-btn grid size-9 shrink-0 place-items-center rounded-[8px] border disabled:opacity-40",
         active ? "border-navy bg-navy text-white" : "border-line dark:border-white/10",
       )}
     >

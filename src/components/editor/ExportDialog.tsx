@@ -19,11 +19,15 @@ const FORMATS: { id: ExportFormat; title: string; desc: string; icon: typeof Fil
   { id: "pdf", title: "PDF", desc: "طباعة وأرشفة رسمية", icon: FileDown },
   { id: "png", title: "PNG", desc: "دقة عالية بلا فقدان", icon: ImageIcon },
   { id: "jpg", title: "JPG", desc: "حجم أصغر للصور", icon: ImageIcon },
-  { id: "pptx", title: "PowerPoint", desc: "شريحة لكل صفحة", icon: Presentation },
-  { id: "docx", title: "Word", desc: "مستند بصري مطابق", icon: FileText },
+  { id: "pptx", title: "PowerPoint", desc: "شرائح قابلة للتعديل", icon: Presentation },
+  { id: "docx", title: "Word", desc: "نصوص وجداول قابلة للتعديل", icon: FileText },
   { id: "html", title: "HTML مستقل", desc: "ملف واحد قابل للطباعة", icon: FileCode2 },
   { id: "json", title: "ملف المشروع", desc: "نسخة احتياطية قابلة للاستيراد", icon: FileJson },
 ];
+
+/** Formats drawn from the rendered DOM; the rest read the page model. */
+const RASTER_FORMATS = new Set<ExportFormat>(["pdf", "png", "jpg"]);
+const OFFICE_FORMATS = new Set<ExportFormat>(["pptx", "docx"]);
 
 export function ExportDialog() {
   const open = useEditor((s) => s.exportOpen);
@@ -38,6 +42,7 @@ export function ExportDialog() {
   const [format, setFormat] = useState<ExportFormat>("pdf");
   const [quality, setQuality] = useState<2 | 3 | 4>(2);
   const [scope, setScope] = useState<"all" | "current">("all");
+  const [editableOffice, setEditableOffice] = useState(true);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +50,7 @@ export function ExportDialog() {
   if (!open) return null;
 
   const selected = scope === "all" ? pages : pages.filter((p) => p.id === activePageId);
-  const needsRaster = !["json", "html"].includes(format);
+  const needsRaster = RASTER_FORMATS.has(format) || (OFFICE_FORMATS.has(format) && !editableOffice);
 
   const run = async () => {
     setBusy(true);
@@ -73,6 +78,7 @@ export function ExportDialog() {
         captured,
         { version, name, theme, orgName, pages, defaultSize: undefined },
         selected,
+        editableOffice,
       );
       toggle("exportOpen");
     } catch (err) {
@@ -144,8 +150,30 @@ export function ExportDialog() {
           })}
         </div>
 
+        {OFFICE_FORMATS.has(format) && (
+          <div className="mt-4 grid gap-2 rounded-[10px] border border-line p-3 dark:border-white/10">
+            <label className="flex cursor-pointer items-start gap-2">
+              <input
+                type="checkbox"
+                checked={editableOffice}
+                onChange={(e) => setEditableOffice(e.target.checked)}
+                className="mt-0.5 size-4 accent-navy"
+              />
+              <span>
+                <strong className="block text-[12px] text-navy dark:text-white">
+                  عناصر قابلة للتعديل
+                </strong>
+                <span className="text-[11px] leading-4 text-muted">
+                  النصوص والجداول والأشكال تُصدَّر كعناصر حقيقية يمكن تعديلها داخل البرنامج.
+                  ألغِ التحديد لتصدير صورة مطابقة تمامًا للتصميم.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
+
         {needsRaster && (
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-4 grid gap-3">
             <label className="grid gap-1 text-[11px] font-extrabold text-muted">
               الجودة
               <select
@@ -158,19 +186,20 @@ export function ExportDialog() {
                 <option value={4}>طباعة فائقة (أبطأ)</option>
               </select>
             </label>
-            <label className="grid gap-1 text-[11px] font-extrabold text-muted">
-              النطاق
-              <select
-                value={scope}
-                onChange={(e) => setScope(e.target.value as "all" | "current")}
-                className="h-9 rounded-[8px] border border-line bg-white px-2 text-[13px] font-semibold dark:border-white/10 dark:bg-white/5 dark:text-white"
-              >
-                <option value="all">كل الصفحات ({pages.length})</option>
-                <option value="current">الصفحة الحالية فقط</option>
-              </select>
-            </label>
           </div>
         )}
+
+        <label className="mt-3 grid gap-1 text-[11px] font-extrabold text-muted">
+          النطاق
+          <select
+            value={scope}
+            onChange={(e) => setScope(e.target.value as "all" | "current")}
+            className="h-9 rounded-[8px] border border-line bg-white px-2 text-[13px] font-semibold dark:border-white/10 dark:bg-white/5 dark:text-white"
+          >
+            <option value="all">كل الصفحات ({pages.length})</option>
+            <option value="current">الصفحة الحالية فقط</option>
+          </select>
+        </label>
 
         {format === "json" && (
           <p className="mt-3 rounded-[8px] border border-line bg-line-2/60 p-3 text-[11px] leading-5 text-muted dark:border-white/10 dark:bg-white/5">

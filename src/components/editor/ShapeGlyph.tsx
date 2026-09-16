@@ -43,20 +43,22 @@ export function ShapeGlyph({ style, fill, stroke, borderWidthMm, box }: Props) {
         strokeLinejoin="round"
       >
         {def.parts.map((part, i) => {
-          const shared = { key: i, strokeLinejoin: "round" as const };
+          // `key` goes on the element itself: React reads it before spreading,
+          // so a keyed object spread here would warn and drop the key.
+          const shared = { strokeLinejoin: "round" as const };
           if (part.k === "rect") {
-            return <rect {...shared} x={part.x} y={part.y} width={part.w} height={part.h} rx={part.rx} />;
+            return <rect key={i} {...shared} x={part.x} y={part.y} width={part.w} height={part.h} rx={part.rx} />;
           }
           if (part.k === "circle") {
-            return <circle {...shared} cx={part.cx} cy={part.cy} r={part.r} />;
+            return <circle key={i} {...shared} cx={part.cx} cy={part.cy} r={part.r} />;
           }
           if (part.k === "ellipse") {
-            return <ellipse {...shared} cx={part.cx} cy={part.cy} rx={part.rx} ry={part.ry} />;
+            return <ellipse key={i} {...shared} cx={part.cx} cy={part.cy} rx={part.rx} ry={part.ry} />;
           }
           if (part.k === "poly") {
-            return <polygon {...shared} points={part.points} />;
+            return <polygon key={i} {...shared} points={part.points} />;
           }
-          return <path {...shared} d={part.d} />;
+          return <path key={i} {...shared} d={part.d} />;
         })}
       </g>
     </svg>

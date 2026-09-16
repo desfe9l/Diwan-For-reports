@@ -4,13 +4,21 @@ import {
   A4,
   GRID,
   THEMES,
+  alignPositions,
   clone,
   constrainElement,
   createElement,
+  createGroupFrom,
+  distributePositions,
+  elementsBounds,
+  explodeGroup,
+  findElement,
   nextZ,
   normalizeZ,
   pageSize,
+  scaleChildren,
   sizePreset,
+  type AlignEdge,
   type CanvasEl,
   type ElType,
   type Page,
@@ -32,8 +40,9 @@ import {
   storageMode,
 } from "./storage";
 import { createProject, createTemplatePage } from "./templates";
-import { FONTS, LEGACY_STORE_KEY, UI_KEY } from "./model";
+import { FONTS, LEGACY_STORE_KEY, TYPE_NAME, UI_KEY } from "./model";
 import { detectDeviceFonts, type DetectedFont } from "./fonts";
+import { resolveTextBox } from "./text-render";
 import { safeImageSrc } from "./images";
 import { clamp, uid } from "@/lib/utils";
 
@@ -76,7 +85,12 @@ function mergeFontChoices(detected: DetectedFont[], uploaded: FontChoice[]): Fon
 
 interface Ui {
   activePageId: string;
+  /** Primary selection: the element whose properties the panel shows. */
   selectedId: string | null;
+  /** Full selection, primary first. Contains `selectedId` when it is non-null. */
+  selectedIds: string[];
+  /** Group whose children are directly selectable, set by entering a group. */
+  enteredGroupId: string | null;
   zoom: number;
   showGrid: boolean;
   snapGrid: boolean;
@@ -147,10 +161,27 @@ interface EditorStore extends Project, Ui, History {
   setOrg: (org: string) => void;
   setActivePage: (id: string) => void;
   select: (id: string | null) => void;
+  /** Add or remove one element from the selection (shift-click). */
+  toggleSelect: (id: string) => void;
+  /** Replace the selection wholesale (marquee, layers, select-all). */
+  selectMany: (ids: string[]) => void;
+  /** Step into a group so its children can be picked individually. */
+  enterGroup: (id: string | null) => void;
+  /** Selected elements of the active page, primary first. */
+  selectedElements: () => CanvasEl[];
+  group: () => void;
+  ungroup: () => void;
+  align: (edge: AlignEdge, frame: "selection" | "page") => void;
+  distribute: (axis: "h" | "v") => void;
+  /** Rename an element from the layers panel. */
+  renameElement: (id: string, name: string) => void;
+  setElementFlag: (id: string, flag: "locked" | "hidden", value?: boolean) => void;
+  moveLayer: (id: string, dir: -1 | 1) => void;
   addElement: (type: ElType, over?: Partial<CanvasEl>) => void;
   updateElement: (id: string, patch: Partial<CanvasEl>, live?: boolean) => void;
   updateStyle: (id: string, patch: CanvasEl["style"], live?: boolean) => void;
   replaceElement: (el: CanvasEl, live?: boolean) => void;
+  fitTextBox: (id: string) => void;
   duplicateSelected: () => void;
   copySelected: () => void;
   pasteClipboard: () => void;
@@ -200,8 +231,46 @@ function snap(v: number, enabled: boolean) {
 
 const blank = createProject("official");
 
-function activePageOf(s: { pages: Page[]; activePageId: string }) {
-  return s.pages.find((p) => p.id === s.activePageId) || s.pages[0];
+const activePageOf = (s: { pages: Page[]; activePageId: string }) =>
+  s.pages.find((p) => p.id === s.activePageId) || s.pages[0];
+
+/**
+ * Replace an element in place, wherever it sits in the page's group tree.
+ *
+ * Group members live in nested `children` arrays, so a plain `map` over
+ * `page.elements` silently misses every element inside a group. Every mutation
+ * that targets one element goes through here so grouped content stays editable.
+ */
+function mapElement(page: Page, id: string, fn: (el: CanvasEl) => CanvasEl): Page {
+  const walk = (list: CanvasEl[]): CanvasEl[] =>
+    list.map((el) => (el.id === id ? fn(el) : el.children?.length ? { ...el, children: walk(el.children) } : el));
+  return { ...page, elements: walk(page.elements) };
+}
+
+/** Where an element lives: the array holding it and its index there. */
+function locate(page: Page, id: string) {
+  return findElement(page.elements, id);
+}
+
+/** True when `ancestorId` contains `id` at any depth. */
+function isDescendant(page: Page, ancestorId: string, id: string): boolean {
+  const found = findElement(page.elements, ancestorId);
+  if (!found?.el.children?.length) return false;
+  return Boolean(findElement(found.el.children, id));
+}
+
+/**
+ * Element ids the user can actually click given the current group context.
+ *
+ * A group behaves as one element from outside, so clicking it selects the whole
+ * group; stepping into it (double-click) narrows the picks to its children.
+ */
+function pickable(page: Page, enteredGroupId: string | null, id: string): boolean {
+  if (!enteredGroupId) {
+    // Top level only: children of a group are reached by entering it.
+    return page.elements.some((e) => e.id === id);
+  }
+  return isDescendant(page, enteredGroupId, id) || page.elements.some((e) => e.id === id);
 }
 
 /** Normalises anything loaded from disk, a file, or an older schema version. */
@@ -212,15 +281,20 @@ function normalizeProject(incoming: Project): Project {
     p.w = pageSize(p).w;
     p.h = pageSize(p).h;
     const size = pageSize(p);
-    p.elements.forEach((el) => {
+    // Groups added a second level of elements; normalize elements at any depth
+    // so a project written before groups existed loads unchanged.
+    const normalizeEl = (el: CanvasEl) => {
       el.style ||= {};
       el.opacity ??= 1;
       el.rotation ??= 0;
+      el.name ||= TYPE_NAME[el.type] || "عنصر";
       // Imported projects carry image sources as plain strings; drop any that
       // could execute script before they reach the canvas or an export.
       if (el.src) el.src = safeImageSrc(el.src);
+      if (el.children?.length) el.children.forEach(normalizeEl);
       constrainElement(el, size);
-    });
+    };
+    p.elements.forEach(normalizeEl);
     normalizeZ(p);
   });
   return {
@@ -262,14 +336,45 @@ export const useEditor = create<EditorStore>((set, get) => {
       ...project,
       activePageId: extra.activePageId || project.pages[0]?.id,
       selectedId: null,
+      selectedIds: [],
+      enteredGroupId: null,
       ...extra,
     });
+  };
+
+  /**
+   * Apply a batch of new positions as one undoable step.
+   *
+   * Align and distribute move several elements at once; writing each through
+   * `updateElement` would push one history entry per element and make Undo
+   * rewind them one at a time.
+   */
+  const applyPositions = (moves: { id: string; x: number; y: number }[]) => {
+    const s = get();
+    const page = activePageOf(s);
+    if (!page) return;
+    const size = pageSize(page);
+    const byId = new Map(moves.map((m) => [m.id, m]));
+    const walk = (list: CanvasEl[]): CanvasEl[] =>
+      list.map((el) => {
+        const move = byId.get(el.id);
+        const next = move ? { ...el, x: move.x, y: move.y } : el;
+        const withChildren = next.children?.length ? { ...next, children: walk(next.children) } : next;
+        // Re-clamp only the elements we actually moved; passing every element
+        // through `constrainElement` would round the untouched ones too.
+        if (move) constrainElement(withChildren, size);
+        return withChildren;
+      });
+    set({ pages: s.pages.map((p) => (p.id === page.id ? { ...p, elements: walk(p.elements) } : p)) });
+    pushHistory();
   };
 
   return {
     ...blank,
     activePageId: blank.pages[0].id,
     selectedId: null,
+    selectedIds: [],
+    enteredGroupId: null,
     zoom: 0.82,
     showGrid: false,
     snapGrid: true,
@@ -505,9 +610,196 @@ export const useEditor = create<EditorStore>((set, get) => {
     },
     setActivePage: (id) => {
       if (id === get().activePageId && !get().previewAll) return;
-      set({ activePageId: id, selectedId: null, previewAll: false });
+      set({ activePageId: id, selectedId: null, selectedIds: [], enteredGroupId: null, previewAll: false });
     },
-    select: (id) => set((s) => ({ selectedId: id, rightOpen: id ? true : s.rightOpen })),
+    select: (id) =>
+      set((s) => ({
+        selectedId: id,
+        selectedIds: id ? [id] : [],
+        enteredGroupId: id ? s.enteredGroupId : null,
+        rightOpen: id ? true : s.rightOpen,
+      })),
+
+    toggleSelect: (id) => {
+      const s = get();
+      const page = activePageOf(s);
+      if (!page || !pickable(page, s.enteredGroupId, id)) return;
+      const has = s.selectedIds.includes(id);
+      const selectedIds = has ? s.selectedIds.filter((x) => x !== id) : [...s.selectedIds, id];
+      // The primary selection is the last one added, which is the element whose
+      // properties the panel should be showing.
+      set({ selectedIds, selectedId: selectedIds.length ? selectedIds[selectedIds.length - 1] : null });
+    },
+
+    selectMany: (ids) => {
+      const s = get();
+      const page = activePageOf(s);
+      if (!page) return;
+      const keep = ids.filter((id) => pickable(page, s.enteredGroupId, id));
+      set({ selectedIds: keep, selectedId: keep.length ? keep[keep.length - 1] : null });
+    },
+
+    enterGroup: (id) => set({ enteredGroupId: id }),
+
+    selectedElements: () => {
+      const s = get();
+      const page = activePageOf(s);
+      if (!page) return [];
+      const out: CanvasEl[] = [];
+      // Preserve selection order (primary last) rather than page order.
+      for (const id of s.selectedIds) {
+        const found = locate(page, id);
+        if (found) out.push(found.el);
+      }
+      return out;
+    },
+
+    group: () => {
+      const s = get();
+      const page = activePageOf(s);
+      if (!page) return;
+      const picked = s.selectedIds
+        .map((id) => locate(page, id)?.el)
+        .filter((el): el is CanvasEl => Boolean(el) && !el!.locked);
+      if (picked.length < 2) {
+        toast.error("حدّد عنصرين أو أكثر للتجميع");
+        return;
+      }
+      // Group only siblings: mixing depths would make the children's relative
+      // coordinates ambiguous, so a nested pick is simply left out.
+      const topLevel = picked.filter((el) => page.elements.some((e) => e.id === el.id));
+      if (topLevel.length < 2) {
+        toast.error("لا يمكن تجميع عناصر من مستويات مختلفة");
+        return;
+      }
+      const group = createGroupFrom(topLevel);
+      if (!group) return;
+      const ids = new Set(topLevel.map((el) => el.id));
+      const elements = [...page.elements.filter((e) => !ids.has(e.id)), group];
+      const next = { ...page, elements };
+      normalizeZ(next);
+      set({
+        pages: s.pages.map((p) => (p.id === page.id ? next : p)),
+        selectedId: group.id,
+        selectedIds: [group.id],
+      });
+      pushHistory();
+      toast.success(`تم تجميع ${topLevel.length} عناصر`);
+    },
+
+    ungroup: () => {
+      const s = get();
+      const page = activePageOf(s);
+      if (!page) return;
+      const targets = s.selectedIds
+        .map((id) => locate(page, id)?.el)
+        .filter((el): el is CanvasEl => Boolean(el) && el!.type === "group" && !el!.locked);
+      if (!targets.length) {
+        toast.error("لا توجد مجموعة محددة لفك التجميع");
+        return;
+      }
+      const ids = new Set(targets.map((t) => t.id));
+      const freed: CanvasEl[] = [];
+      const elements: CanvasEl[] = [];
+      for (const el of page.elements) {
+        if (ids.has(el.id)) freed.push(...explodeGroup(el));
+        else elements.push(el);
+      }
+      const next = { ...page, elements: [...elements, ...freed] };
+      normalizeZ(next);
+      set({
+        pages: s.pages.map((p) => (p.id === page.id ? next : p)),
+        selectedIds: freed.map((f) => f.id),
+        selectedId: freed.length ? freed[freed.length - 1].id : null,
+        enteredGroupId: null,
+      });
+      pushHistory();
+      toast.success(freed.length > 1 ? `تم فك تجميع ${freed.length} عناصر` : "تم فك التجميع");
+    },
+
+    align: (edge, frame) => {
+      const s = get();
+      const page = activePageOf(s);
+      if (!page) return;
+      const picked = s.selectedIds
+        .map((id) => locate(page, id)?.el)
+        .filter((el): el is CanvasEl => Boolean(el));
+      if (picked.length < 2) {
+        toast.error("حدّد عنصرين أو أكثر للمحاذاة");
+        return;
+      }
+      const size = pageSize(page);
+      const target =
+        frame === "page"
+          ? { x: 0, y: 0, w: size.w, h: size.h }
+          : elementsBounds(picked) || { x: 0, y: 0, w: size.w, h: size.h };
+      applyPositions(alignPositions(picked, edge, target));
+    },
+
+    distribute: (axis) => {
+      const s = get();
+      const page = activePageOf(s);
+      if (!page) return;
+      const picked = s.selectedIds
+        .map((id) => locate(page, id)?.el)
+        .filter((el): el is CanvasEl => Boolean(el));
+      const out = distributePositions(picked, axis);
+      if (!out) {
+        toast.error("التوزيع يحتاج ثلاثة عناصر أو أكثر");
+        return;
+      }
+      applyPositions(out);
+    },
+
+    renameElement: (id, name) => {
+      const s = get();
+      const page = activePageOf(s);
+      if (!page) return;
+      const next = mapElement(page, id, (el) => ({ ...el, name: name.trim() || el.name }));
+      set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
+      pushHistory();
+    },
+
+    setElementFlag: (id, flag, value) => {
+      const s = get();
+      const page = activePageOf(s);
+      if (!page) return;
+      const next = mapElement(page, id, (el) => ({ ...el, [flag]: value ?? !el[flag] }));
+      set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
+      pushHistory();
+    },
+
+    moveLayer: (id, dir) => {
+      const s = get();
+      const page = activePageOf(s);
+      if (!page) return;
+      const found = locate(page, id);
+      if (!found) return;
+      const index = found.list.findIndex((e) => e.id === id);
+      const target = index + dir;
+      if (target < 0 || target >= found.list.length) return;
+      const next = { ...page, elements: [...page.elements] };
+      // Reorder within the flat page list; group members reorder inside their
+      // own `children` array so the tree shape is preserved.
+      if (found.list === page.elements) {
+        const arr = [...page.elements];
+        [arr[index], arr[target]] = [arr[target], arr[index]];
+        next.elements = arr;
+      } else {
+        const applyIn = (list: CanvasEl[]): CanvasEl[] => {
+          if (list === found.list) {
+            const arr = [...list];
+            [arr[index], arr[target]] = [arr[target], arr[index]];
+            return arr;
+          }
+          return list.map((el) => (el.children?.length ? { ...el, children: applyIn(el.children) } : el));
+        };
+        next.elements = applyIn(page.elements);
+      }
+      normalizeZ(next);
+      set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
+      pushHistory();
+    },
 
     addElement: (type, over) => {
       const s = get();
@@ -536,67 +828,106 @@ export const useEditor = create<EditorStore>((set, get) => {
 
     updateElement: (id, patch, live) => {
       const s = get();
-      const pages = s.pages.map((p) => {
-        if (!p.elements.some((el) => el.id === id)) return p;
-        const size = pageSize(p);
-        return {
-          ...p,
-          elements: p.elements.map((el) => {
-            if (el.id !== id) return el;
-            const next = { ...el, ...patch, style: { ...el.style, ...(patch.style || {}) } };
-            if (patch.x != null && !live) next.x = snap(Number(patch.x), s.snapGrid);
-            if (patch.y != null && !live) next.y = snap(Number(patch.y), s.snapGrid);
-            constrainElement(next, size);
-            return next;
-          }),
-        };
+      const page = activePageOf(s);
+      if (!page) return;
+      const size = pageSize(page);
+      const next = mapElement(page, id, (el) => {
+        const merged = { ...el, ...patch, style: { ...el.style, ...(patch.style || {}) } };
+        if (patch.x != null && !live) merged.x = snap(Number(patch.x), s.snapGrid);
+        if (patch.y != null && !live) merged.y = snap(Number(patch.y), s.snapGrid);
+        constrainElement(merged, size);
+        return merged;
       });
-      set({ pages });
+      set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
       if (live) scheduleSave(400);
       else pushHistory();
     },
 
     updateStyle: (id, patch, live) => {
       const s = get();
-      set({
-        pages: s.pages.map((p) => ({
-          ...p,
-          elements: p.elements.map((el) => (el.id === id ? { ...el, style: { ...el.style, ...patch } } : el)),
-        })),
+      const page = activePageOf(s);
+      if (!page) return;
+      const size = pageSize(page);
+      const next = mapElement(page, id, (el) => {
+        const merged = { ...el, style: { ...el.style, ...patch } };
+        constrainElement(merged, size);
+        return merged;
       });
+      set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
       if (live) scheduleSave(400);
       else pushHistory();
     },
 
     replaceElement: (el, live) => {
       const s = get();
-      const pages = s.pages.map((p) => {
-        if (!p.elements.some((e) => e.id === el.id)) return p;
-        const size = pageSize(p);
-        const next = clone(el);
-        constrainElement(next, size);
-        return { ...p, elements: p.elements.map((e) => (e.id === el.id ? next : e)) };
+      const page = activePageOf(s);
+      if (!page) return;
+      const size = pageSize(page);
+      const prev = locate(page, el.id)?.el;
+      const next = mapElement(page, el.id, () => {
+        const copy = clone(el);
+        // A group carries its members in relative coordinates, so resizing the
+        // group box has to rescale them or the contents detach from the frame.
+        if (copy.children?.length && prev) scaleChildren(copy, prev.w, prev.h);
+        constrainElement(copy, size);
+        return copy;
       });
-      set({ pages });
+      set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
       if (live) scheduleSave(600);
       else pushHistory();
+    },
+
+    /**
+     * Grow or shrink an element's box to match its text.
+     *
+     * Called on every commit of a text edit. `autoHeight`/`autoWidth` boxes track
+     * their content so the author never has to resize by hand, and the write is
+     * folded into the same history entry as the edit itself.
+     */
+    fitTextBox: (id) => {
+      const s = get();
+      const page = activePageOf(s);
+      if (!page) return;
+      const found = locate(page, id);
+      if (!found) return;
+      const size = pageSize(page);
+      const box = resolveTextBox(found.el, size);
+      if (!box) return;
+      const next = mapElement(page, id, (el) => {
+        const merged = { ...el, w: box.w, h: box.h };
+        constrainElement(merged, size);
+        return merged;
+      });
+      set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
+      scheduleSave(500);
     },
 
     duplicateSelected: () => {
       const s = get();
       const page = activePageOf(s);
-      const el = page?.elements.find((e) => e.id === s.selectedId);
-      if (!page || !el) return;
+      if (!page) return;
+      const picked = s.selectedIds
+        .map((id) => locate(page, id)?.el)
+        .filter((el): el is CanvasEl => Boolean(el));
+      if (!picked.length) return;
+      // Only top-level elements are duplicated onto the page: a group is one
+      // element, and copying one of its members would need a new parent.
+      const topLevel = picked.filter((el) => page.elements.some((e) => e.id === el.id));
+      if (!topLevel.length) return;
       const size = pageSize(page);
-      const copy = clone(el);
-      copy.id = uid("el");
-      copy.x = clamp(el.x + 6, 0, size.w - el.w);
-      copy.y = clamp(el.y + 6, 0, size.h - el.h);
-      copy.z = nextZ(page);
-      copy.name = `${el.name} نسخة`;
+      const copies = topLevel.map((el) => {
+        const copy = clone(el);
+        copy.id = uid("el");
+        copy.x = clamp(el.x + 6, 0, Math.max(0, size.w - el.w));
+        copy.y = clamp(el.y + 6, 0, Math.max(0, size.h - el.h));
+        copy.z = nextZ(page);
+        copy.name = `${el.name} نسخة`;
+        return copy;
+      });
       set({
-        pages: s.pages.map((p) => (p.id === page.id ? { ...p, elements: [...p.elements, copy] } : p)),
-        selectedId: copy.id,
+        pages: s.pages.map((p) => (p.id === page.id ? { ...p, elements: [...p.elements, ...copies] } : p)),
+        selectedIds: copies.map((c) => c.id),
+        selectedId: copies[copies.length - 1].id,
       });
       pushHistory();
     },
@@ -604,9 +935,12 @@ export const useEditor = create<EditorStore>((set, get) => {
     copySelected: () => {
       const s = get();
       const page = activePageOf(s);
-      const el = page?.elements.find((e) => e.id === s.selectedId);
-      if (!el) return;
-      set({ clipboard: clone(el) });
+      if (!page) return;
+      const picked = s.selectedIds
+        .map((id) => locate(page, id)?.el)
+        .filter((el): el is CanvasEl => Boolean(el));
+      if (!picked.length) return;
+      set({ clipboard: clone(picked.length === 1 ? picked[0] : createGroupFrom(picked) || picked[0]) });
     },
 
     pasteClipboard: () => {
@@ -616,14 +950,21 @@ export const useEditor = create<EditorStore>((set, get) => {
       if (!page) return;
       const size = pageSize(page);
       const el = clone(s.clipboard);
-      el.id = uid("el");
-      el.x = clamp(el.x + 8, 0, size.w - el.w);
-      el.y = clamp(el.y + 8, 0, size.h - el.h);
+      el.id = uid(el.type === "group" ? "grp" : "el");
+      // A group's children keep their relative positions, but each needs a fresh
+      // id so the copies do not collide with the originals in the tree.
+      if (el.children?.length) {
+        const reid = (list: CanvasEl[]) => list.forEach((c) => { c.id = uid("el"); if (c.children?.length) reid(c.children); });
+        reid(el.children);
+      }
+      el.x = clamp(el.x + 8, 0, Math.max(0, size.w - el.w));
+      el.y = clamp(el.y + 8, 0, Math.max(0, size.h - el.h));
       el.z = nextZ(page);
       constrainElement(el, size);
       set({
         pages: s.pages.map((p) => (p.id === page.id ? { ...p, elements: [...p.elements, el] } : p)),
         selectedId: el.id,
+        selectedIds: [el.id],
       });
       pushHistory();
     },
@@ -631,13 +972,26 @@ export const useEditor = create<EditorStore>((set, get) => {
     deleteSelected: () => {
       const s = get();
       const page = activePageOf(s);
-      const el = page?.elements.find((e) => e.id === s.selectedId);
-      if (!page || !el || el.locked) return;
+      if (!page) return;
+      // Deleting an element inside a group removes just that member; only
+      // top-level picks need the page list rewritten.
+      const deletable = s.selectedIds.filter((id) => {
+        const found = locate(page, id);
+        return found && !found.el.locked;
+      });
+      if (!deletable.length) return;
+      const ids = new Set(deletable);
+      const strip = (list: CanvasEl[]): CanvasEl[] =>
+        list
+          .filter((el) => !ids.has(el.id))
+          .map((el) => (el.children?.length ? { ...el, children: strip(el.children) } : el));
+      const elements = strip(page.elements);
+      const next = { ...page, elements };
+      normalizeZ(next);
       set({
-        pages: s.pages.map((p) =>
-          p.id === page.id ? { ...p, elements: p.elements.filter((e) => e.id !== el.id) } : p,
-        ),
+        pages: s.pages.map((p) => (p.id === page.id ? next : p)),
         selectedId: null,
+        selectedIds: [],
       });
       pushHistory();
     },
@@ -645,42 +999,49 @@ export const useEditor = create<EditorStore>((set, get) => {
     bring: (dir) => {
       const s = get();
       const page = activePageOf(s);
-      const el = page?.elements.find((e) => e.id === s.selectedId);
-      if (!page || !el) return;
-      const moved = clone(el);
-      if (dir === "forward") moved.z += 1.5;
-      if (dir === "back") moved.z -= 1.5;
-      if (dir === "front") moved.z = page.elements.length + 2;
-      if (dir === "bottom") moved.z = 0;
-      const pages = s.pages.map((p) => {
-        if (p.id !== page.id) return p;
-        const next = { ...p, elements: p.elements.map((e) => (e.id === el.id ? moved : e)) };
-        normalizeZ(next);
-        return next;
+      if (!page) return;
+      const picked = s.selectedIds
+        .map((id) => locate(page, id)?.el)
+        .filter((el): el is CanvasEl => Boolean(el))
+        .filter((el) => page.elements.some((e) => e.id === el.id));
+      if (!picked.length) return;
+      const ids = new Set(picked.map((el) => el.id));
+      const elements = page.elements.map((el) => {
+        if (!ids.has(el.id)) return el;
+        const moved = clone(el);
+        if (dir === "forward") moved.z += 1.5;
+        if (dir === "back") moved.z -= 1.5;
+        if (dir === "front") moved.z = page.elements.length + 2;
+        if (dir === "bottom") moved.z = 0;
+        return moved;
       });
-      set({ pages });
+      const next = { ...page, elements };
+      normalizeZ(next);
+      set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
       pushHistory();
     },
 
     toggleLock: () => {
       const s = get();
-      set({
-        pages: s.pages.map((p) => ({
-          ...p,
-          elements: p.elements.map((e) => (e.id === s.selectedId ? { ...e, locked: !e.locked } : e)),
-        })),
-      });
+      const page = activePageOf(s);
+      if (!page) return;
+      const ids = new Set(s.selectedIds);
+      if (!ids.size) return;
+      // A locked group cannot be toggled: unlocking it would be the only way out
+      // of a state the author just chose.
+      const next = { ...page, elements: page.elements.map((e) => (ids.has(e.id) ? { ...e, locked: !e.locked } : e)) };
+      set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
       pushHistory();
     },
 
     toggleHidden: () => {
       const s = get();
-      set({
-        pages: s.pages.map((p) => ({
-          ...p,
-          elements: p.elements.map((e) => (e.id === s.selectedId ? { ...e, hidden: !e.hidden } : e)),
-        })),
-      });
+      const page = activePageOf(s);
+      if (!page) return;
+      const ids = new Set(s.selectedIds);
+      if (!ids.size) return;
+      const next = { ...page, elements: page.elements.map((e) => (ids.has(e.id) ? { ...e, hidden: !e.hidden } : e)) };
+      set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
       pushHistory();
     },
 
@@ -834,26 +1195,14 @@ export const useEditor = create<EditorStore>((set, get) => {
       pushHistory();
     },
 
+    /**
+     * Align to a page edge — the single-element convenience that predates
+     * `align`. Routes through the same code path so a multi-selection behaves
+     * consistently whether the author picks "align to page" here or in the
+     * align menu.
+     */
     alignPage: (edge) => {
-      const s = get();
-      const page = activePageOf(s);
-      const el = page?.elements.find((e) => e.id === s.selectedId);
-      if (!page || !el || el.locked) return;
-      const size = pageSize(page);
-      const next = { ...el, style: { ...el.style } };
-      if (edge === "left") next.x = 0;
-      if (edge === "right") next.x = size.w - el.w;
-      if (edge === "center") next.x = (size.w - el.w) / 2;
-      if (edge === "top") next.y = 0;
-      if (edge === "bottom") next.y = size.h - el.h;
-      if (edge === "middle") next.y = (size.h - el.h) / 2;
-      constrainElement(next, size);
-      set({
-        pages: s.pages.map((p) =>
-          p.id === page.id ? { ...p, elements: p.elements.map((e) => (e.id === el.id ? next : e)) } : p,
-        ),
-      });
-      pushHistory();
+      get().align(edge, "page");
     },
 
     undo: () => {
@@ -862,7 +1211,7 @@ export const useEditor = create<EditorStore>((set, get) => {
       const current = past[past.length - 1];
       const prev = past[past.length - 2];
       applyProject(JSON.parse(prev) as Project);
-      set({ past: past.slice(0, -1), future: [current, ...future], selectedId: null });
+      set({ past: past.slice(0, -1), future: [current, ...future] });
       scheduleSave(300);
     },
 
@@ -871,7 +1220,7 @@ export const useEditor = create<EditorStore>((set, get) => {
       if (!future.length) return;
       const [next, ...rest] = future;
       applyProject(JSON.parse(next) as Project);
-      set({ past: [...past, next], future: rest, selectedId: null });
+      set({ past: [...past, next], future: rest });
       scheduleSave(300);
     },
 
@@ -901,7 +1250,15 @@ export function getActivePage(): Page {
 
 export function getSelected(): CanvasEl | null {
   const s = useEditor.getState();
-  return activePageOf(s)?.elements.find((e) => e.id === s.selectedId) || null;
+  const page = activePageOf(s);
+  if (!page || !s.selectedId) return null;
+  // Resolves through groups so a member picked inside a group is editable.
+  return findElement(page.elements, s.selectedId)?.el || null;
+}
+
+/** All currently selected elements of the active page, primary last. */
+export function getSelectedMany(): CanvasEl[] {
+  return useEditor.getState().selectedElements();
 }
 
 /** Human label for the autosave indicator. */

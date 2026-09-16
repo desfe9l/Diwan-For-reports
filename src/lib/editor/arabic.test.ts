@@ -9,6 +9,7 @@ import {
   stripTashkeel,
   toArabicDigits,
   unwrapParagraphs,
+  withParagraphSpacing,
 } from "./arabic.ts";
 
 describe("Arabic numerals", () => {
@@ -60,6 +61,63 @@ describe("estimateLines", () => {
     const small = estimateLines(text, 80, 8);
     const large = estimateLines(text, 80, 24);
     assert.ok(large > small, `expected ${large} > ${small}`);
+  });
+});
+
+describe("withParagraphSpacing", () => {
+  const two = "فقرة أولى\n\nفقرة ثانية";
+
+  it("returns the text untouched at zero", () => {
+    assert.equal(withParagraphSpacing(two, 0), two);
+  });
+
+  it("leaves a single newline alone — it is a soft break, not a paragraph gap", () => {
+    assert.equal(withParagraphSpacing("سطر\nسطر", 2), "سطر\nسطر");
+  });
+
+  it("adds one extra blank line per step, on top of the break's own blank line", () => {
+    assert.equal(withParagraphSpacing(two, 1), "فقرة أولى\n\n\nفقرة ثانية");
+    assert.equal(withParagraphSpacing(two, 2), "فقرة أولى\n\n\n\nفقرة ثانية");
+  });
+
+  it("applies to every paragraph boundary", () => {
+    const three = "أ\n\nب\n\nج";
+    const out = withParagraphSpacing(three, 1);
+    assert.equal((out.match(/\n{3}/g) || []).length, 2);
+  });
+
+  it("caps runaway spacing", () => {
+    const out = withParagraphSpacing(two, 99);
+    assert.ok((out.match(/\n+/)?.[0].length ?? 0) <= 6);
+  });
+
+  it("is reversible, because the stored content keeps the author's newlines", () => {
+    const spaced = withParagraphSpacing(two, 2);
+    assert.notEqual(spaced, two);
+    assert.equal(withParagraphSpacing(two, 0), two);
+  });
+});
+
+describe("fitFontSize with paragraph spacing", () => {
+  const paras = "المقدمة\n\nالإحصائيات\n\nالمؤشرات\n\nالنتائج\n\nالتوصيات";
+  const box = { w: 100, h: 30 };
+
+  it("budgets less room as the paragraph gap grows", () => {
+    const tight = fitFontSize(paras, box, 14, 1.45, "shrink", 0);
+    const loose = fitFontSize(paras, box, 14, 1.45, "shrink", 2);
+    assert.ok(loose <= tight, `expected ${loose} <= ${tight}`);
+  });
+
+  it("ignores paragraph spacing for a single paragraph", () => {
+    const one = "فقرة واحدة بلا فواصل";
+    assert.equal(
+      fitFontSize(one, box, 14, 1.45, "shrink", 2),
+      fitFontSize(one, box, 14, 1.45, "shrink", 0),
+    );
+  });
+
+  it("still returns the base size in clip mode", () => {
+    assert.equal(fitFontSize(paras, box, 14, 1.45, "clip", 2), 14);
   });
 });
 

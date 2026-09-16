@@ -142,7 +142,55 @@ export function estimateLines(text: string, boxWidthMm: number, fontSizePt: numb
   }, 0);
 }
 
+/**
+ * Count paragraphs (blank-line-separated runs) in a block.
+ *
+ * Used to add the inter-paragraph gaps to the height estimate: a two-paragraph
+ * block is taller than the same number of lines run together, and auto-fit has
+ * to know that or it shrinks to the wrong size.
+ */
+export function countParagraphs(text: string): number {
+  return String(text ?? "")
+    .split(/\n\s*\n/)
+    .filter((p) => p.trim().length > 0).length;
+}
+
 export type TextFit = "clip" | "shrink" | "grow";
+
+/**
+ * Presets for the gap between paragraphs, counted in blank lines.
+ *
+ * Whole lines on purpose: the block renders with `white-space: pre-wrap`, so a
+ * gap is literally an extra newline. Using whole steps keeps what the author
+ * sees identical to what `fitFontSize` budgets for, instead of the two drifting
+ * apart by a fraction of a line.
+ */
+export const PARAGRAPH_SPACINGS: { id: string; label: string; value: number }[] = [
+  { id: "none", label: "بلا فراغ", value: 0 },
+  { id: "one", label: "فراغ سطر", value: 1 },
+  { id: "two", label: "فراغ سطرين", value: 2 },
+];
+
+/**
+ * Normalise the blank-line gap between paragraphs to `lines` extra blank lines.
+ *
+ * A paragraph break already renders as one blank line (`\n\n` between two
+ * non-empty lines under `white-space: pre-wrap`), so `lines` counts only the
+ * *additional* ones: the run becomes `lines + 2` newlines. Whole lines on
+ * purpose — a gap here is literally a newline, and whole steps keep what the
+ * author sees identical to what `fitFontSize` budgets for, instead of the two
+ * drifting apart by a fraction of a line.
+ *
+ * Runs on the display string only. `el.content` keeps the author's own
+ * newlines, so returning the preset to "بلا فراغ" restores the original text
+ * rather than leaving the padding baked into what they typed.
+ */
+export function withParagraphSpacing(text: string, lines: number): string {
+  const extra = Math.round(lines);
+  if (!extra || extra < 1) return text;
+  const gap = "\n".repeat(Math.min(6, extra + 2));
+  return text.replace(/\n{2,}/g, gap);
+}
 
 /**
  * Largest font size (pt) at which `text` still fits `box`, within [minScale, 1]
@@ -163,16 +211,18 @@ export function fitFontSize(
   fontSizePt: number,
   lineHeight = 1.45,
   mode: TextFit = "shrink",
+  paragraphSpacing = 0,
 ): number {
   const base = Math.max(1, Number(fontSizePt) || 14);
   if (mode === "clip") return base;
   if (!String(text ?? "").trim()) return base;
 
-  const lineMmAt = (pt: number) => pt * 0.3528 * (lineHeight || 1.45);
-  const fits = (pt: number) => {
-    const lines = estimateLines(text, box.w, pt);
-    return lines * lineMmAt(pt) <= box.h + 0.4;
-  };
+  // Leading beyond the visible lines. A `\n\n` paragraph break renders as one
+  // blank line, and each extra step adds one more, so `paragraphSpacing` of n
+  // contributes n + 1 lines per boundary. Deriving it here rather than counting
+  // `\n\n` runs keeps this aligned with `withParagraphSpacing`.
+  const fits = (pt: number) =>
+    measureTextHeight(text, box.w, pt, lineHeight, paragraphSpacing) <= box.h + 0.4;
 
   if (mode === "shrink") {
     if (fits(base)) return base;
@@ -195,6 +245,45 @@ export function fitFontSize(
     else break;
   }
   return Math.round(best * 10) / 10;
+}
+
+/**
+ * Height in mm a text block occupies at a given point size.
+ *
+ * This is the single budget the text-box modes reason about: `autoHeight` grows
+ * the box to it, `fixed` compares it against the author's box to report
+ * overflow, and `fit` search-shrinks against it. Sharing one function is what
+ * keeps "the box fits" and "the text fits" from disagreeing.
+ */
+export function measureTextHeight(
+  text: string,
+  boxWidthMm: number,
+  fontSizePt: number,
+  lineHeight = 1.45,
+  paragraphSpacing = 0,
+): number {
+  const lines = estimateLines(text, boxWidthMm, fontSizePt);
+  if (lines === 0) return 0;
+  const boundaries = Math.max(0, countParagraphs(text) - 1);
+  const extraGapLines = boundaries * (Math.max(0, paragraphSpacing) + 1);
+  return (lines + extraGapLines) * fontSizePt * 0.3528 * (lineHeight || 1.45);
+}
+
+/**
+ * Smallest box width (mm) that keeps a block's line count from growing.
+ *
+ * `autoWidth` has to stop somewhere: without a cap, one long paragraph would
+ * expand to the page width and every later line would still wrap, so the search
+ * targets the width at which the current wrapping is already as good as it gets.
+ */
+export function measureTextWidth(text: string, fontSizePt: number, maxWidthMm: number): number {
+  const longest = String(text ?? "")
+    .split("\n")
+    .reduce((max, line) => Math.max(max, line.trim().length), 0);
+  if (longest === 0) return maxWidthMm;
+  // Average Arabic glyph advance is ≈0.5em; 1pt ≈ 0.3528mm.
+  const perChar = fontSizePt * 0.3528 * 0.5;
+  return Math.min(maxWidthMm, longest * perChar);
 }
 
 /** Line-height presets that suit Arabic ascenders/descenders. */

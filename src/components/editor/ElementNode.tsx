@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { ICONS, cssFont, parseTable, type CanvasEl } from "@/lib/editor/model";
-import { prepareText } from "@/lib/editor/text-render";
+import { prepareText, textPadding } from "@/lib/editor/text-render";
 import { useEditor } from "@/lib/editor/store";
 import { cn } from "@/lib/utils";
 import { applyNumerals } from "@/lib/editor/arabic";
@@ -19,8 +19,16 @@ interface Props {
 /** Types whose text can be edited in place with a double click. */
 const EDITABLE = new Set(["text", "box", "stat", "stamp", "progress"]);
 
-export function ElementNode({ el, selected, interactive, onPointerDown }: Props) {
+export function ElementNode({
+  el,
+  selected,
+  interactive,
+  onPointerDown,
+  multi,
+  onEnterGroup,
+}: Props & { multi?: boolean; onEnterGroup?: () => void }) {
   const updateElement = useEditor((s) => s.updateElement);
+  const fitTextBox = useEditor((s) => s.fitTextBox);
   const commit = useEditor((s) => s.commit);
   const textRef = useRef<HTMLDivElement>(null);
   const editing = useRef(false);
@@ -36,7 +44,17 @@ export function ElementNode({ el, selected, interactive, onPointerDown }: Props)
   }, [el.id]);
 
   const startEdit = (e: React.MouseEvent) => {
-    if (!interactive || el.locked || !EDITABLE.has(el.type)) return;
+    if (!interactive || el.locked) return;
+    // Double-clicking a group steps inside it rather than editing text, which is
+    // the only way to reach members that are selectable individually.
+    if (el.type === "group") {
+      if (onEnterGroup) {
+        e.stopPropagation();
+        onEnterGroup();
+      }
+      return;
+    }
+    if (!EDITABLE.has(el.type)) return;
     e.stopPropagation();
     const node = textRef.current;
     if (!node) return;
@@ -59,7 +77,11 @@ export function ElementNode({ el, selected, interactive, onPointerDown }: Props)
     node.contentEditable = "false";
     node.classList.remove("editing");
     const next = node.innerText;
-    if (next !== el.content) updateElement(el.id, { content: next });
+    const changed = next !== el.content;
+    if (changed) updateElement(el.id, { content: next });
+    // Re-measure after committing: an auto-height box has to grow now, not on
+    // the next unrelated render, or the author sees their text cut mid-typing.
+    if (changed) fitTextBox(el.id);
     commit();
   };
 
@@ -68,7 +90,12 @@ export function ElementNode({ el, selected, interactive, onPointerDown }: Props)
   return (
     <div
       data-el-id={el.id}
-      className={cn("canvas-el", selected && interactive && "selected", el.locked && "locked")}
+      className={cn(
+        "canvas-el",
+        selected && interactive && "selected",
+        selected && multi && "is-secondary",
+        el.locked && "locked",
+      )}
       style={{
         left: `${el.x}mm`,
         top: `${el.y}mm`,
@@ -88,7 +115,7 @@ export function ElementNode({ el, selected, interactive, onPointerDown }: Props)
       onDoubleClick={startEdit}
     >
       <ElementContent el={el} textRef={textRef} onBlur={finishEdit} />
-      {selected && interactive && !el.locked && (
+      {selected && interactive && !el.locked && !multi && (
         <>
           {HANDLES.map((h) => (
             <div
@@ -125,6 +152,14 @@ function ElementContent({
   const s = el.style || {};
   const prepared = prepareText(el);
   const vertical = s.writingMode === "vertical";
+  const pad = textPadding(el);
+  /*
+   * Arabic leading is measured from the baseline, not the em box, so a single
+   * `line-height` value renders unevenly across fonts that place their
+   * ascenders and descenders differently. Hyphenation stays off (there is no
+   * Arabic hyphenation worth trusting), and justified text keeps its closing
+   * line flush to the right unless the author asks for it to stretch too.
+   */
   const textStyle: React.CSSProperties = {
     fontFamily: cssFont(s.fontFamily),
     fontSize: `${prepared.fontSize}pt`,
@@ -138,6 +173,12 @@ function ElementContent({
     direction: "rtl",
     writingMode: vertical ? "vertical-rl" : undefined,
     textOrientation: vertical ? "mixed" : undefined,
+    hyphens: "none",
+    padding: pad ? `${pad}mm` : undefined,
+    overflow: s.overflowVisible ? "visible" : undefined,
+    ...(s.textAlign === "justify" && s.justifyLastLine === "stretch"
+      ? { textAlignLast: "justify" as const }
+      : {}),
   };
 
   // While a text node is being edited it is contentEditable, and re-rendering the
@@ -170,7 +211,7 @@ function ElementContent({
           background: s.fill || s.background || "#f7f8fb",
           border: `${s.borderWidth ?? 0.35}mm solid ${s.borderColor || "#d9dee8"}`,
           borderRadius: `${s.radius ?? 4}mm`,
-          padding: `${s.padding ?? 4}mm`,
+          padding: `${pad}mm`,
           display: "flex",
           alignItems: el.type === "stat" ? "center" : "flex-start",
           justifyContent:
@@ -305,6 +346,25 @@ function ElementContent({
         >
           <div style={{ width: `${value}%`, height: "100%", background: s.fill || "#071d3d" }} />
         </div>
+      </div>
+    );
+  }
+
+  if (el.type === "group") {
+    return (
+      <div className="relative h-full w-full">
+        {(el.children || [])
+          .slice()
+          .sort((a, b) => a.z - b.z)
+          .map((child) => (
+            <ElementNode
+              key={child.id}
+              el={{ ...child, hidden: child.hidden }}
+              selected={false}
+              interactive={false}
+              onPointerDown={() => {}}
+            />
+          ))}
       </div>
     );
   }

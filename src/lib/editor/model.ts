@@ -67,7 +67,8 @@ export type ElType =
   | "stamp"
   | "qr"
   | "stat"
-  | "progress";
+  | "progress"
+  | "group";
 
 export type ThemeId = "official" | "eid" | "ministry" | "slate" | "sand";
 export type PackId = "official" | "eid" | "briefing" | "blank" | "slides";
@@ -86,6 +87,8 @@ export interface ElStyle {
   textAlign?: "right" | "center" | "left" | "justify";
   lineHeight?: number;
   letterSpacing?: number;
+  /** Gap between paragraphs, in mm. Blank lines in the content become this gap. */
+  paragraphSpacing?: number;
   textShadow?: string;
   shadow?: string;
   objectFit?: "cover" | "contain" | "fill";
@@ -103,7 +106,6 @@ export interface ElStyle {
   /** Alternating row tint; empty means flat rows. */
   stripeBg?: string;
   cellAlign?: "right" | "center" | "left";
-  padding?: number;
   icon?: string;
   /** `progress` elements: filled share of the bar, 0–100. */
   value?: number;
@@ -115,6 +117,22 @@ export interface ElStyle {
   numerals?: Numerals;
   /** How text behaves when it exceeds its box. */
   textFit?: TextFit;
+  /**
+   * Let text paint past the element box instead of clipping.
+   *
+   * Default is clipping, which is right for a fixed frame, but a paragraph the
+   * author is still writing (or one set to `textFit: clip` on purpose) is more
+   * useful spilling visibly than silently truncated.
+   */
+  overflowVisible?: boolean;
+  /**
+   * حتى نهاية السطر: justify every line but the last.
+   *
+   * CSS `text-align: justify` stretches the final short line of a paragraph,
+   * which looks wrong in Arabic reports. This switches the element to the
+   * `.justified-rtl` rule, which pins the last line back to the right edge.
+   */
+  justifyLastLine?: "start" | "stretch";
   /** Draw the text vertically, top-to-bottom (titles on covers). */
   writingMode?: "horizontal" | "vertical";
   /** Apply the author's line breaks only; collapse soft wraps. */
@@ -125,7 +143,26 @@ export interface ElStyle {
   bindUnits?: boolean;
   /** Convert ASCII punctuation to its Arabic counterpart. */
   arabicPunctuation?: boolean;
+  /**
+   * How the text box reacts when its content outgrows it.
+   *
+   * `autoHeight` is the default for prose: the box grows downwards and the text
+   * is never cut. `fixed` honours the author's box exactly and reports the
+   * overflow instead of hiding it. `autoWidth` expands sideways, and `fit`
+   * shrinks the font — the last resort, because a shrinking font is more
+   * noticeable than a growing box.
+   */
+  textBoxMode?: TextBoxMode;
+  /** Inner padding for text-ish elements, in mm. */
+  padding?: number;
+  /** Manual extra height added on top of measured text (mm, autoHeight only). */
+  slackMm?: number;
 }
+
+export type TextBoxMode = "autoHeight" | "fixed" | "autoWidth" | "fit";
+
+/** Types whose box can auto-size to their text. */
+export const AUTO_TEXT_TYPES: ElType[] = ["text", "box", "stat", "stamp"];
 
 export interface CanvasEl {
   id: string;
@@ -144,6 +181,16 @@ export interface CanvasEl {
   src?: string;
   icon?: string;
   style: ElStyle;
+  /**
+   * `group` members, positioned relative to the group.
+   *
+   * Relative coordinates are what make a group behave as one element: moving or
+   * resizing the group is a single change to the parent box, and its children
+   * follow without needing per-child rewrites. The editor bakes the members'
+   * page coordinates into group-relative ones on grouping and the reverse on
+   * ungrouping.
+   */
+  children?: CanvasEl[];
 }
 
 export interface Page {
@@ -319,6 +366,7 @@ export const TYPE_NAME: Record<ElType, string> = {
   qr: "رمز QR",
   stat: "مؤشر",
   progress: "شريط تقدم",
+  group: "مجموعة",
 };
 
 /** Named text roles so a report author picks intent, not point sizes. */
@@ -646,6 +694,12 @@ export function createElement(type: ElType, over: Partial<CanvasEl> = {}, theme?
         showValue: true,
       },
     },
+    group: {
+      w: 60,
+      h: 40,
+      children: [],
+      style: {},
+    },
   };
 
   const d = defaults[type] || {};
@@ -688,6 +742,227 @@ export function normalizeZ(page: Page) {
 
 export function nextZ(page: Page) {
   return Math.max(0, ...page.elements.map((e) => e.z || 0)) + 1;
+}
+
+export interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Axis-aligned bounds of a set of boxes, or null when the set is empty. */
+export function boundsOf(boxes: Box[]): Box | null {
+  if (!boxes.length) return null;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const b of boxes) {
+    x0 = Math.min(x0, b.x);
+    y0 = Math.min(y0, b.y);
+    x1 = Math.max(x1, b.x + b.w);
+    y1 = Math.max(y1, b.y + b.h);
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** Bounds of elements' own boxes (page coordinates, no group resolution). */
+export function elementsBounds(els: CanvasEl[]): Box | null {
+  return boundsOf(els);
+}
+
+/**
+ * Flatten an element list to include group members.
+ *
+ * Used by anything that treats the page as a flat set of painted boxes — the
+ * marquee, snapping and the exporters — while the editor itself keeps groups
+ * whole.
+ */
+export function flattenElements(els: CanvasEl[]): CanvasEl[] {
+  const out: CanvasEl[] = [];
+  const walk = (list: CanvasEl[]) => {
+    for (const el of list) {
+      out.push(el);
+      if (el.children?.length) walk(el.children);
+    }
+  };
+  walk(els);
+  return out;
+}
+
+/** Deepest element list that contains `id`, plus the element itself. */
+export function findElement(
+  els: CanvasEl[],
+  id: string,
+): { el: CanvasEl; list: CanvasEl[]; index: number } | null {
+  const index = els.findIndex((e) => e.id === id);
+  if (index >= 0) return { el: els[index], list: els, index };
+  for (const el of els) {
+    if (el.children?.length) {
+      const hit = findElement(el.children, id);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+/**
+ * Page-space position of an element nested in groups.
+ *
+ * Group children store group-relative coordinates, so reaching a nested element
+ * means adding every ancestor's origin on the way down.
+ */
+export function absolutePosition(els: CanvasEl[], id: string, ox = 0, oy = 0): { x: number; y: number } | null {
+  for (const el of els) {
+    const x = ox + el.x;
+    const y = oy + el.y;
+    if (el.id === id) return { x, y };
+    if (el.children?.length) {
+      const hit = absolutePosition(el.children, id, x, y);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+/** Scale group children so they stay proportional when the group box changes. */
+export function scaleChildren(group: CanvasEl, prevW: number, prevH: number) {
+  if (!group.children?.length) return;
+  const sx = prevW > 0 ? group.w / prevW : 1;
+  const sy = prevH > 0 ? group.h / prevH : 1;
+  for (const child of group.children) {
+    child.x *= sx;
+    child.y *= sy;
+    child.w *= sx;
+    child.h *= sy;
+    // Grandchildren are relative to this child, so they scale but do not move.
+    if (child.children?.length) scaleChildren(child, prevW / sx, prevH / sy);
+  }
+}
+
+/**
+ * Wrap elements into a single group, converting their page coordinates into
+ * group-relative ones.
+ */
+export function createGroupFrom(els: CanvasEl[], name?: string): CanvasEl | null {
+  const box = elementsBounds(els);
+  if (!box || els.length < 2) return null;
+  const children = els.map((el) => ({
+    ...clone(el),
+    x: el.x - box.x,
+    y: el.y - box.y,
+  }));
+  return {
+    id: uid("grp"),
+    type: "group",
+    name: name || `مجموعة (${els.length})`,
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: box.h,
+    rotation: 0,
+    opacity: 1,
+    z: Math.max(...els.map((e) => e.z || 1)),
+    children,
+    style: {},
+  };
+}
+
+/** Flatten a group back to page coordinates, so members rejoin the page list. */
+export function explodeGroup(group: CanvasEl): CanvasEl[] {
+  return (group.children || []).map((child) => ({
+    ...clone(child),
+    x: group.x + child.x,
+    y: group.y + child.y,
+    z: (child.z || 1) + (group.z || 1),
+  }));
+}
+
+export type AlignEdge = "left" | "right" | "center" | "top" | "middle" | "bottom";
+
+/**
+ * New positions that align elements to a shared edge.
+ *
+ * `frame` is what the elements align *against*: their own combined bounding box
+ * by default, or the page when the author picks that. Returning plain positions
+ * rather than mutating keeps this pure and testable, and lets the caller decide
+ * whether it is one history entry or many.
+ */
+export function alignPositions(
+  els: CanvasEl[],
+  edge: AlignEdge,
+  frame: Box,
+): { id: string; x: number; y: number }[] {
+  return els.map((el) => {
+    let { x, y } = el;
+    switch (edge) {
+      case "left":
+        x = frame.x;
+        break;
+      case "right":
+        x = frame.x + frame.w - el.w;
+        break;
+      case "center":
+        x = frame.x + (frame.w - el.w) / 2;
+        break;
+      case "top":
+        y = frame.y;
+        break;
+      case "bottom":
+        y = frame.y + frame.h - el.h;
+        break;
+      case "middle":
+        y = frame.y + (frame.h - el.h) / 2;
+        break;
+    }
+    return { id: el.id, x, y };
+  });
+}
+
+/**
+ * Even gaps between elements on one axis ("distribute spacing").
+ *
+ * The outermost two elements stay put and the rest are spread so the *gaps*
+ * between neighbours are equal. Distributing the centres instead would look
+ * wrong the moment elements differ in size, which is the normal case for a row
+ * of stat cards next to a paragraph.
+ */
+export function distributePositions(
+  els: CanvasEl[],
+  axis: "h" | "v",
+): { id: string; x: number; y: number }[] | null {
+  if (els.length < 3) return null;
+  const sizeOf = (el: CanvasEl) => (axis === "h" ? el.w : el.h);
+  const posOf = (el: CanvasEl) => (axis === "h" ? el.x : el.y);
+  const sorted = [...els].sort((a, b) => posOf(a) - posOf(b));
+
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const span = posOf(last) + sizeOf(last) - posOf(first);
+  const totalSize = sorted.reduce((sum, el) => sum + sizeOf(el), 0);
+  const gap = (span - totalSize) / (sorted.length - 1);
+
+  const out: { id: string; x: number; y: number }[] = [];
+  let cursor = posOf(first);
+  for (const el of sorted) {
+    out.push(axis === "h" ? { id: el.id, x: cursor, y: el.y } : { id: el.id, x: el.x, y: cursor });
+    cursor += sizeOf(el) + gap;
+  }
+  return out;
+}
+
+/** Bounding box of elements in page space, resolving group nesting. */
+export function absoluteBounds(pageEls: CanvasEl[], ids: string[]): Box | null {
+  const boxes: Box[] = [];
+  for (const id of ids) {
+    const found = findElement(pageEls, id);
+    if (!found) continue;
+    const abs = absolutePosition(pageEls, id);
+    if (!abs) continue;
+    boxes.push({ x: abs.x, y: abs.y, w: found.el.w, h: found.el.h });
+  }
+  return boundsOf(boxes);
 }
 
 export function clone<T>(v: T): T {

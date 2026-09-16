@@ -344,7 +344,30 @@ in-browser say so and ship the best web-only build.
   done**, like a failing build or typecheck — but silent while the brand pass
   runs.
 - **Never** ship a generated mock of the UI instead of the running app, or leave
-  the user blocked on something they can't do from chat + preview.
+  the user blocked on something they can't do from their own browser.
+
+### Office export contracts (`pptx-writer.ts` / `docx-writer.ts`)
+
+Both writers must emit **real, editable** Office content, not flattened rasters,
+and the output has to survive a strict parser (`python-pptx` / `python-docx`) —
+substring checks on the XML happily pass for files Word silently drops.
+
+- **Drawing ids are globally unique per document.** `ImageRun` in the `docx`
+  package ignores `docProperties` and derives `wp:docPr/@id` from `altText`,
+  restarting at `1` for every picture. Shapes draw their ids from the module
+  `shapeSeq` counter, so an image must pass `altText: { id: String(++shapeSeq) }`
+  or it collides with a shape and Word rejects the file.
+- **`<w:tbl>` must be a body-level sibling**, never nested inside a `<w:p>`.
+  python-docx, Word and LibreOffice all drop a nested table while the XML still
+  contains `<w:tbl`, so a substring assertion proves nothing.
+- **PPTX images need a `data:` URI.** An SVG passed to pptxgenjs without the
+  `data:image/svg+xml;base64,` prefix is resolved as a relative path and the
+  export fails with `Unable to load image`.
+- Give exported objects Arabic names (`نص 1`, `جدول 1`, `شكل 1`) so PowerPoint's
+  selection pane stays usable in a long report.
+
+Verify with:
+`node --experimental-strip-types --test src/lib/editor/office-export.test.ts`
 
 ---
 

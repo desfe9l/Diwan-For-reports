@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlignCenter,
+  AlignJustify,
   AlignLeft,
   AlignRight,
   ArrowDown,
@@ -19,6 +20,7 @@ import {
   SHADOWS,
   THEMES,
   TYPE_NAME,
+  findElement,
   parseTable,
   type CanvasEl,
 } from "@/lib/editor/model";
@@ -26,6 +28,7 @@ import {
   LETTER_SPACINGS,
   LINE_HEIGHTS,
   NUMERAL_OPTIONS,
+  PARAGRAPH_SPACINGS,
   TEXT_FIT_OPTIONS,
 } from "@/lib/editor/arabic";
 import { SHAPES } from "@/lib/editor/shapes";
@@ -44,7 +47,6 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
   const pages = useEditor((s) => s.pages);
   const activePageId = useEditor((s) => s.activePageId);
   const selectedId = useEditor((s) => s.selectedId);
-  const select = useEditor((s) => s.select);
   const updateElement = useEditor((s) => s.updateElement);
   const updateStyle = useEditor((s) => s.updateStyle);
   const duplicateSelected = useEditor((s) => s.duplicateSelected);
@@ -69,12 +71,15 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
   }, [probeFonts]);
 
   const page = pages.find((p) => p.id === activePageId);
-  const el = page?.elements.find((e) => e.id === selectedId);
+  // Resolves through groups, so a member picked inside a group shows its own
+  // properties rather than nothing.
+  const el = page && selectedId ? findElement(page.elements, selectedId)?.el : undefined;
   const layers = [...(page?.elements || [])].sort((a, b) => b.z - a.z);
+  const selectedCount = useEditor((s) => s.selectedIds.length);
 
   return (
-    <aside className="flex min-h-0 flex-col border-r border-line bg-white dark:border-white/10 dark:bg-[#161c26]">
-      <div className="grid grid-cols-2 gap-2 border-b border-line p-2 dark:border-white/10">
+    <aside className="flex h-full min-h-0 flex-col border-r border-line bg-white dark:border-white/10 dark:bg-[#161c26]">
+      <div className="grid shrink-0 grid-cols-2 gap-2 border-b border-line p-2 dark:border-white/10">
         {(
           [
             ["properties", "خصائص"],
@@ -95,55 +100,14 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
         ))}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto p-3">
+      <div className="editor-pane-scroll min-h-0 flex-1 overflow-auto p-3">
         {tab === "layers" && (
           <div className="grid gap-1.5">
             {layers.length === 0 && (
               <EmptyNote>لا توجد عناصر في هذه الصفحة بعد.</EmptyNote>
             )}
             {layers.map((layer) => (
-              <div
-                key={layer.id}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-[8px] border px-2 py-1.5",
-                  layer.id === selectedId ? "border-navy-2 bg-navy-2/5" : "border-line dark:border-white/10",
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => select(layer.id)}
-                  className="flex min-w-0 flex-1 items-center justify-between text-right text-[12px]"
-                >
-                  <span className="truncate font-bold">{layer.name || TYPE_NAME[layer.type]}</span>
-                  <span className="flex items-center gap-1 pr-1 text-muted">
-                    {layer.locked && <Lock className="size-3.5" />}
-                    {layer.hidden && <EyeOff className="size-3.5" />}
-                    <span className="text-[10px] tabular-nums">{layer.z}</span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  title={layer.hidden ? "إظهار" : "إخفاء"}
-                  onClick={() => {
-                    select(layer.id);
-                    toggleHidden();
-                  }}
-                  className="grid size-7 shrink-0 place-items-center rounded-[6px] border border-line dark:border-white/10"
-                >
-                  {layer.hidden ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
-                </button>
-                <button
-                  type="button"
-                  title={layer.locked ? "فتح القفل" : "قفل"}
-                  onClick={() => {
-                    select(layer.id);
-                    toggleLock();
-                  }}
-                  className="grid size-7 shrink-0 place-items-center rounded-[6px] border border-line dark:border-white/10"
-                >
-                  {layer.locked ? <Unlock className="size-3.5" /> : <Lock className="size-3.5" />}
-                </button>
-              </div>
+              <LayerRow key={layer.id} layer={layer} />
             ))}
           </div>
         )}
@@ -167,6 +131,12 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
 
         {tab === "properties" && el && (
           <div className="grid gap-3">
+            {selectedCount > 1 && (
+              <div className="rounded-[8px] border border-blue-300 bg-blue-50 px-2.5 py-2 text-[11px] font-bold text-blue-900 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
+                {selectedCount} عناصر محددة — تُطبَّق التعديلات على العنصر الأساسي «{el.name || TYPE_NAME[el.type]}» فقط.
+                استخدم شريط الترتيب للمحاذاة والتجميع.
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <h3 className="text-[13px] font-extrabold">{el.name || TYPE_NAME[el.type]}</h3>
               <span className="text-[11px] text-muted">{TYPE_NAME[el.type]}</span>
@@ -294,14 +264,17 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                   <div className="flex gap-1">
                     {(
                       [
-                        ["right", AlignRight],
-                        ["center", AlignCenter],
-                        ["left", AlignLeft],
+                        ["right", AlignRight, "يمين"],
+                        ["center", AlignCenter, "وسط"],
+                        ["left", AlignLeft, "يسار"],
+                        ["justify", AlignJustify, "ضبط"],
                       ] as const
-                    ).map(([v, Icon]) => (
+                    ).map(([v, Icon, hint]) => (
                       <button
                         key={v}
                         type="button"
+                        title={hint}
+                        aria-label={hint}
                         onClick={() => updateStyle(el.id, { textAlign: v })}
                         aria-pressed={el.style.textAlign === v}
                         className={cn(
@@ -323,15 +296,15 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                       onBlur={() => updateStyle(el.id, { color: el.style.color })}
                     />
                   </Field>
-                  <Field label="تباعد الأسطر">
+                  <Field label="تباعد الحروف مم">
                     <input
                       type="number"
                       step={0.05}
-                      min={0.8}
+                      min={-1}
                       max={3}
-                      value={el.style.lineHeight || 1.45}
-                      onChange={(e) => updateStyle(el.id, { lineHeight: Number(e.target.value) }, true)}
-                      onBlur={() => updateStyle(el.id, { lineHeight: el.style.lineHeight })}
+                      value={el.style.letterSpacing ?? 0}
+                      onChange={(e) => updateStyle(el.id, { letterSpacing: Number(e.target.value) }, true)}
+                      onBlur={() => updateStyle(el.id, { letterSpacing: el.style.letterSpacing })}
                     />
                   </Field>
                 </div>
@@ -340,8 +313,17 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
 
             {(el.type === "text" || el.type === "box" || el.type === "stat") && (
               <>
-                <Field label="تباعد الأسطر">
-                  <div className="flex gap-1">
+                <Field label={`تباعد الأسطر — ${(el.style.lineHeight || 1.45).toFixed(2)}`}>
+                  <CommitRange
+                    min={0.9}
+                    max={2.6}
+                    step={0.05}
+                    value={el.style.lineHeight || 1.45}
+                    ariaLabel="تباعد الأسطر"
+                    onLive={(v) => updateStyle(el.id, { lineHeight: v }, true)}
+                    onCommit={(v) => updateStyle(el.id, { lineHeight: v })}
+                  />
+                  <div className="mt-1 flex gap-1">
                     {LINE_HEIGHTS.map((l) => (
                       <button
                         key={l.id}
@@ -349,7 +331,7 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                         title={`${l.label} (${l.value})`}
                         onClick={() => updateStyle(el.id, { lineHeight: l.value })}
                         className={cn(
-                          "h-8 flex-1 rounded-[6px] border text-[10px] font-extrabold",
+                          "h-7 flex-1 rounded-[6px] border text-[10px] font-extrabold",
                           Math.abs((el.style.lineHeight || 1.45) - l.value) < 0.01
                             ? "border-navy-2 bg-navy-2/5"
                             : "border-line dark:border-white/10",
@@ -408,6 +390,27 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                   </div>
                 </Field>
 
+                <Field label="الفراغ بين الفقرات">
+                  <div className="flex gap-1">
+                    {PARAGRAPH_SPACINGS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => updateStyle(el.id, { paragraphSpacing: p.value })}
+                        aria-pressed={(el.style.paragraphSpacing || 0) === p.value}
+                        className={cn(
+                          "h-8 flex-1 rounded-[6px] border text-[10px] font-extrabold",
+                          (el.style.paragraphSpacing || 0) === p.value
+                            ? "border-navy-2 bg-navy-2/5"
+                            : "border-line dark:border-white/10",
+                        )}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
                 <Field label="النص الطويل">
                   <select
                     value={el.style.textFit || "clip"}
@@ -428,6 +431,44 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                     يُصغَّر الخط تلقائياً ليتسع النص داخل الإطار — يتوقف عند أدنى حجم مقروء.
                   </p>
                 )}
+
+                {el.style.textAlign === "justify" && (
+                  <Field label="السطر الأخير">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(
+                        [
+                          ["start", "إلى اليمين"],
+                          ["stretch", "ممتد"],
+                        ] as const
+                      ).map(([v, l]) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => updateStyle(el.id, { justifyLastLine: v })}
+                          aria-pressed={(el.style.justifyLastLine || "start") === v}
+                          className={cn(
+                            "h-8 rounded-[6px] border text-[10px] font-extrabold",
+                            (el.style.justifyLastLine || "start") === v
+                              ? "border-navy-2 bg-navy-2/5"
+                              : "border-line dark:border-white/10",
+                          )}
+                        >
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                )}
+
+                <label className="flex h-9 items-center justify-between gap-2 rounded-[8px] border border-line px-2 text-[10px] font-extrabold dark:border-white/10">
+                  إظهار النص الزائد
+                  <input
+                    type="checkbox"
+                    checked={Boolean(el.style.overflowVisible)}
+                    onChange={(e) => updateStyle(el.id, { overflowVisible: e.target.checked })}
+                    className="accent-navy"
+                  />
+                </label>
 
                 <div className="grid grid-cols-2 gap-1.5">
                   <label className="flex h-9 items-center justify-between gap-2 rounded-[8px] border border-line px-2 text-[10px] font-extrabold dark:border-white/10">
@@ -1170,11 +1211,184 @@ function shadowId(value: string | undefined) {
   return hit?.id || "none";
 }
 
+/**
+ * One row in the layers list.
+ *
+ * Groups expand to show their members, which is the only place a nested element
+ * can be picked without stepping into it on the canvas. Renaming happens inline
+ * so the author stays in the list while organising a busy page.
+ */
+function LayerRow({ layer, depth = 0 }: { layer: CanvasEl; depth?: number }) {
+  const selected = useEditor((s) => s.selectedIds.includes(layer.id));
+  const select = useEditor((s) => s.select);
+  const toggleSelect = useEditor((s) => s.toggleSelect);
+  const setElementFlag = useEditor((s) => s.setElementFlag);
+  const renameElement = useEditor((s) => s.renameElement);
+  const enterGroup = useEditor((s) => s.enterGroup);
+  const moveLayer = useEditor((s) => s.moveLayer);
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(layer.name || TYPE_NAME[layer.type]);
+
+  const commitName = () => {
+    setRenaming(false);
+    const next = draft.trim();
+    if (next && next !== layer.name) renameElement(layer.id, next);
+    else setDraft(layer.name || TYPE_NAME[layer.type]);
+  };
+
+  return (
+    <div className="grid gap-1">
+      <div
+        className={cn(
+          "flex items-center gap-1.5 rounded-[8px] border px-2 py-1.5",
+          selected ? "border-navy-2 bg-navy-2/5" : "border-line dark:border-white/10",
+        )}
+        style={depth ? { marginInlineStart: `${depth * 10}px` } : undefined}
+      >
+        {renaming ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitName();
+              if (e.key === "Escape") {
+                setDraft(layer.name || TYPE_NAME[layer.type]);
+                setRenaming(false);
+              }
+            }}
+            className="min-w-0 flex-1 rounded-[6px] border border-line px-1.5 py-0.5 text-[12px] font-bold dark:border-white/15"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => (e.shiftKey ? toggleSelect(layer.id) : select(layer.id))}
+            onDoubleClick={() => {
+              // Double-clicking a group row steps into it, mirroring the canvas.
+              if (layer.type === "group") enterGroup(layer.id);
+              else setRenaming(true);
+            }}
+            className="flex min-w-0 flex-1 items-center justify-between text-right text-[12px]"
+            title="نقرة لتحديد، Shift+نقرة لإضافة، نقرة مزدوجة لإعادة التسمية"
+          >
+            <span className="truncate font-bold">
+              {layer.type === "group" && <span className="me-1 text-gold-2">▸</span>}
+              {layer.name || TYPE_NAME[layer.type]}
+            </span>
+            <span className="flex items-center gap-1 pr-1 text-muted">
+              {layer.locked && <Lock className="size-3.5" />}
+              {layer.hidden && <EyeOff className="size-3.5" />}
+              <span className="text-[10px] tabular-nums">{layer.z}</span>
+            </span>
+          </button>
+        )}
+        <button
+          type="button"
+          title="تقديم طبقة"
+          onClick={() => moveLayer(layer.id, 1)}
+          className="grid size-7 shrink-0 place-items-center rounded-[6px] border border-line dark:border-white/10"
+        >
+          <ArrowUp className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          title="تأخير طبقة"
+          onClick={() => moveLayer(layer.id, -1)}
+          className="grid size-7 shrink-0 place-items-center rounded-[6px] border border-line dark:border-white/10"
+        >
+          <ArrowDown className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          title={layer.hidden ? "إظهار" : "إخفاء"}
+          onClick={() => setElementFlag(layer.id, "hidden")}
+          className="grid size-7 shrink-0 place-items-center rounded-[6px] border border-line dark:border-white/10"
+        >
+          {layer.hidden ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+        </button>
+        <button
+          type="button"
+          title={layer.locked ? "فتح القفل" : "قفل"}
+          onClick={() => setElementFlag(layer.id, "locked")}
+          className="grid size-7 shrink-0 place-items-center rounded-[6px] border border-line dark:border-white/10"
+        >
+          {layer.locked ? <Unlock className="size-3.5" /> : <Lock className="size-3.5" />}
+        </button>
+      </div>
+      {layer.children
+        ?.slice()
+        .sort((a, b) => b.z - a.z)
+        .map((child) => (
+          <LayerRow key={child.id} layer={child} depth={depth + 1} />
+        ))}
+    </div>
+  );
+}
+
 function EmptyNote({ children }: { children: React.ReactNode }) {
   return (
     <p className="rounded-[8px] border border-dashed border-line p-4 text-[12px] leading-6 text-muted dark:border-white/15">
       {children}
     </p>
+  );
+}
+
+/**
+ * A range input whose drag produces exactly one undo step.
+ *
+ * Dragging fires `input` continuously; writing each tick straight to the store
+ * would push ~40 history entries per gesture and bury the user's real edits.
+ * The live value goes to the canvas without history, and the gesture's end
+ * value is applied once — with history — on release.
+ */
+function CommitRange({
+  min,
+  max,
+  step,
+  value,
+  ariaLabel,
+  onLive,
+  onCommit,
+}: {
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  ariaLabel: string;
+  onLive: (v: number) => void;
+  onCommit: (v: number) => void;
+}) {
+  const pending = useRef<number | null>(null);
+
+  const flush = () => {
+    if (pending.current === null) return;
+    onCommit(pending.current);
+    pending.current = null;
+  };
+
+  return (
+    <input
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      aria-label={ariaLabel}
+      onChange={(e) => {
+        const v = Number(e.target.value);
+        pending.current = v;
+        onLive(v);
+      }}
+      onPointerUp={flush}
+      onPointerCancel={flush}
+      // Keyboard arrow keys have no pointer gesture, so commit on each press.
+      onKeyUp={(e) => {
+        pending.current = Number((e.target as HTMLInputElement).value);
+        flush();
+      }}
+      onBlur={flush}
+    />
   );
 }
 
