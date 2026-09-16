@@ -202,7 +202,7 @@ html.dark .studio-grid {
 .canvas-el {
   position: absolute;
   transform-origin: center center;
-  overflow: hidden;
+  overflow: visible; /* تم التعديل هنا لتظهر المقابض الخارجة ولا يتم قصها */
   touch-action: none;
   min-width: 3mm;
   min-height: 3mm;
