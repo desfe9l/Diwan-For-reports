@@ -219,18 +219,17 @@ html.dark .studio-grid {
 }
 
 .canvas-el.selected {
-  outline: 0.55mm solid rgba(37, 99, 235, 0.95);
-  outline-offset: 0.8mm;
+  outline: 1.5px solid #2563eb !important;
+  outline-offset: 4px;
 }
 
 /*
  * Secondary members of a multi-selection get a thinner, dashed ring so the
- * handle-bearing primary element stays visually dominant — otherwise a
- * nine-element selection is nine identical outlines with no focal point.
+ * handle-bearing primary element stays visually dominant.
  */
 .canvas-el.selected.is-secondary {
-  outline: 0.35mm dashed rgba(37, 99, 235, 0.75);
-  outline-offset: 0.6mm;
+  outline: 1px dashed rgba(37, 99, 235, 0.75);
+  outline-offset: 3px;
 }
 
 .canvas-el.locked {
@@ -240,8 +239,8 @@ html.dark .studio-grid {
 /* Frame drawn around a group the author has stepped into. */
 .canvas-el.group-frame {
   pointer-events: none;
-  outline: 0.4mm dashed rgba(198, 160, 90, 0.9);
-  outline-offset: 0.6mm;
+  outline: 1px dashed rgba(198, 160, 90, 0.9);
+  outline-offset: 4px;
   min-width: 0;
   min-height: 0;
 }
@@ -257,10 +256,6 @@ html.dark .studio-grid {
 
 /*
  * Overflow warning.
- *
- * Rendered as a sibling of the element rather than inside it: `.canvas-el`
- * clips its own content, so a badge placed inside would be cut off by
- * exactly the element it is warning about.
  */
 .overflow-badge {
   position: absolute;
@@ -282,10 +277,6 @@ html.dark .studio-grid {
 
 /*
  * Arrangement bar.
- *
- * Positioned over the top of the canvas rather than in the layout flow: it is
- * transient, and reserving permanent vertical space for a control that only
- * exists during a multi-selection would shrink the page for everyone.
  */
 .arrange-bar {
   position: absolute;
@@ -371,33 +362,38 @@ html.dark .studio-grid {
 .rotate-handle {
   position: absolute;
   z-index: 20;
-  background: #fff;
-  border: 0.5mm solid #2563eb;
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25);
+  background: #ffffff;
+  border: 2px solid #2563eb;
+  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.2);
 }
 
 .handle {
-  width: 3.4mm;
-  height: 3.4mm;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
 }
 
-.handle.nw { top: -2.1mm; left: -2.1mm; cursor: nwse-resize; }
-.handle.n { top: -2.1mm; left: calc(50% - 1.7mm); cursor: ns-resize; }
-.handle.ne { top: -2.1mm; right: -2.1mm; cursor: nesw-resize; }
-.handle.e { top: calc(50% - 1.7mm); right: -2.1mm; cursor: ew-resize; }
-.handle.se { bottom: -2.1mm; right: -2.1mm; cursor: nwse-resize; }
-.handle.s { bottom: -2.1mm; left: calc(50% - 1.7mm); cursor: ns-resize; }
-.handle.sw { bottom: -2.1mm; left: -2.1mm; cursor: nesw-resize; }
-.handle.w { top: calc(50% - 1.7mm); left: -2.1mm; cursor: ew-resize; }
+.handle.nw { top: -8px; left: -8px; cursor: nwse-resize; }
+.handle.n  { top: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.handle.ne { top: -8px; right: -8px; cursor: nesw-resize; }
+.handle.e  { top: 50%; right: -8px; transform: translateY(-50%); cursor: ew-resize; }
+.handle.se { bottom: -8px; right: -8px; cursor: nwse-resize; }
+.handle.s  { bottom: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.handle.sw { bottom: -8px; left: -8px; cursor: nesw-resize; }
+.handle.w  { top: 50%; left: -8px; transform: translateY(-50%); cursor: ew-resize; }
 
 .rotate-handle {
-  width: 4.6mm;
-  height: 4.6mm;
-  top: -11mm;
-  left: calc(50% - 2.3mm);
-  border-radius: 999px;
+  width: 10px;
+  height: 10px;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 50%;
   cursor: grab;
+}
+
+.rotate-handle:active {
+  cursor: grabbing;
 }
 
 .guide-v {
@@ -421,10 +417,7 @@ html.dark .studio-grid {
 }
 
 /*
- * `word-break: normal` keeps Arabic words intact — breaking inside a joined
- * word severs the letter forms and reads as a typo. `overflow-wrap: anywhere`
- * still lets a single unbreakable token (a long URL, a mixed Latin acronym)
- * wrap instead of overflowing the box.
+ * `word-break: normal` keeps Arabic words intact.
  */
 .el-text,
 .el-box {
@@ -444,8 +437,7 @@ html.dark .studio-grid {
 }
 
 /*
- * Reordering handles for the page rail and project list. Kept as a utility so
- * both use the same cursor language as the canvas.
+ * Reordering handles for the page rail and project list.
  */
 .drag-handle {
   cursor: grab;
