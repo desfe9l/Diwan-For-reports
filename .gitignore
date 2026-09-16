@@ -22,3 +22,5 @@ dist/
 # Editor
 .vscode/
 .idea/
+# Runtime state (preview pid)
+.grok/
