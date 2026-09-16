@@ -30,22 +30,10 @@ export function isAcceptedImage(file: File): boolean {
 
 /**
  * Allow only image sources that cannot execute script.
- *
- * `src` on an image or logo element can arrive from an imported `.json` project,
- * so it is untrusted input: `javascript:` and `data:text/html` URLs must be
- * dropped rather than handed to the DOM or interpolated into an exported
- * document. Validating here, at the single point where imported data is
- * normalised, keeps the canvas and the exporter from drifting apart.
  */
 export function safeImageSrc(src: unknown): string {
   const value = String(src ?? "").trim();
   if (!value) return "";
-  // `data:image/<subtype>[;param=value][;base64],<payload>` — the platform's own
-  // placeholder and QR artwork are URL-encoded SVG data URLs, so parameters such
-  // as `;charset=UTF-8` must remain valid. Pinning the media type to `image/`
-  // rejects `javascript:` and `data:text/html` sources. SVG is allowed because
-  // both render paths load it through an <img>, where it cannot run script; the
-  // exporter additionally escapes the value before writing it into an attribute.
   if (/^data:image\/[a-z0-9.+-]+(;[a-z0-9-]+=[a-z0-9-]+)*(;base64)?,[\s\S]*$/i.test(value)) return value;
   if (/^https?:\/\//i.test(value)) return value;
   if (/^blob:/i.test(value)) return value;
@@ -72,12 +60,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 
 /**
  * Turn a picked/dropped file into a data URL sized for a print page.
- *
- * Projects are stored client-side, so a 12MP phone photo would otherwise become
- * a multi-megabyte base64 string inside every autosave and export. Downscaling
- * once at intake keeps storage and export bounded without the author noticing.
- * SVG and small files are passed through untouched: re-encoding vector art
- * would destroy it, and small files are already cheap.
  */
 export async function prepareImage(file: File, limits: ImageLimits = IMAGE_LIMITS): Promise<PreparedImage> {
   if (!isAcceptedImage(file)) throw new Error("نوع الملف ليس صورة مدعومة");
@@ -102,11 +84,22 @@ export async function prepareImage(file: File, limits: ImageLimits = IMAGE_LIMIT
   canvas.height = th;
   const ctx = canvas.getContext("2d");
   if (!ctx) return { src: raw, width: w, height: h, resized: false };
-  // Photos are opaque; white avoids black edges if a source PNG has transparency.
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, tw, th);
+
+  // التحقق مما إذا كانت الصورة شفافة (PNG أو WebP) للحفاظ على الشفافية وعدم ملء الخلفية باللون الأبيض
+  const isTransparent = file.type === "image/png" || file.type === "image/webp" || file.type === "image/gif";
+  
+  if (!isTransparent) {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, tw, th);
+  }
+
   ctx.drawImage(img, 0, 0, tw, th);
-  return { src: canvas.toDataURL("image/jpeg", 0.92), width: tw, height: th, resized: true };
+  
+  // الحفاظ على صيغة PNG إذا كانت الصورة الأصلية شفافة لضمان عدم ضياع القنوات الشفافة
+  const mimeType = isTransparent ? "image/png" : "image/jpeg";
+  const quality = isTransparent ? undefined : 0.92;
+
+  return { src: canvas.toDataURL(mimeType, quality), width: tw, height: th, resized: true };
 }
 
 /**
