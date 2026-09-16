@@ -24,3 +24,6 @@ dist/
 .idea/
 # Runtime state (preview pid)
 .grok/
+
+# Generated source archive served for download
+public/downloads/*.zip
