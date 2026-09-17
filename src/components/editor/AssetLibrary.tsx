@@ -1,29 +1,22 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Check, ImagePlus, Pencil, Trash2, X } from "lucide-react";
 import { useEditor } from "@/lib/editor/store";
 import type { Asset } from "@/lib/editor/storage";
 import { cn } from "@/lib/utils";
 
-/**
- * The reusable shelf of uploaded images.
- *
- * Placing a shape or a logo as a picture is the common way an author reuses
- * decoration between reports, so anything uploaded here is kept — independent
- * of the project that happened to be open at the time — and inserted as an
- * `image` element on click.
- */
 export function AssetLibrary({ onUpload }: { onUpload: () => void }) {
   const assets = useEditor((s) => s.assets);
   const assetsLoading = useEditor((s) => s.assetsLoading);
   const addElement = useEditor((s) => s.addElement);
   const removeAsset = useEditor((s) => s.removeAsset);
   const renameAsset = useEditor((s) => s.renameAsset);
+  const addAsset = useEditor((s) => s.addAsset); // تأكد أن هذه الدالة موجودة في الـ store لحفظ الصور، أو يتم تمريرها عبر الـ props
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
 
   const place = (asset: Asset) => {
-    // Fit inside a sane page area while keeping the picture's own proportions,
-    // so a large saved shape never lands wider than the sheet.
     const max = { w: 90, h: 90 };
     const scale = Math.min(max.w / asset.w, max.h / asset.h, 1);
     addElement("image", {
@@ -42,6 +35,42 @@ export function AssetLibrary({ onUpload }: { onUpload: () => void }) {
   const commitRename = () => {
     if (editingId) void renameAsset(editingId, draftName);
     setEditingId(null);
+  };
+
+  // دالة التعامل مع اختيار عدة ملفات دفعة واحدة
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      // قراءة الصورة وتحويلها إلى Base64 أو رفعها للمكتبة
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const src = event.target?.result as string;
+        if (src) {
+          // استخراج أبعاد الصورة الحقيقية للحفاظ على نسبتها
+          const img = new Image();
+          img.onload = () => {
+            // استدعاء دالة إضافة عنصر للمكتبة (أو دالة الرفع المتاحة لديك)
+            if (typeof addAsset === "function") {
+              void addAsset({
+                name: file.name.replace(/\.[^/.]+$/, ""), // اسم الملف بدون الامتداد
+                src,
+                w: img.width || 100,
+                h: img.height || 100,
+              });
+            }
+          };
+          img.src = src;
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // إعادة تعيين الـ input ليقبل نفس الملفات لو رغب المستخدم مجدداً
+    e.target.value = "";
+    onUpload();
   };
 
   return (
@@ -141,9 +170,19 @@ export function AssetLibrary({ onUpload }: { onUpload: () => void }) {
         </div>
       )}
 
+      {/* عنصر رفع الملفات المخفي المزود بخاصية multiple لاختيار عدة صور معاً */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        multiple
+        accept="image/*"
+        className="hidden"
+      />
+
       <button
         type="button"
-        onClick={onUpload}
+        onClick={() => fileInputRef.current?.click()}
         className="mt-1.5 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-[8px] border border-line text-[11px] font-extrabold dark:border-white/10"
       >
         <ImagePlus className="size-3.5" /> حفظ عنصر جديد في المكتبة
