@@ -369,6 +369,26 @@ substring checks on the XML happily pass for files Word silently drops.
 Verify with:
 `node --experimental-strip-types --test src/lib/editor/office-export.test.ts`
 
+### Brand identity contract (`src/lib/brand.ts`)
+
+- **`BRAND` is the only place the product name lives.** Import it rather than
+  writing "NASAQ" or "نَسَق" as a literal, so a rename stays a one-file change.
+  Arabic-facing copy uses `platform` / `nameAr`; English-facing copy uses
+  `platformEn` / `name`. Use `lockup` where the brand appears once.
+- **The product name and the developer attribution are separate.** NASAQ is the
+  product; `owner` / `developer` credit Faisal Alenezi and must never be folded
+  into the product name or used as the header identity.
+- **Emerald is the brand anchor.** Institutional emerald `#006c35` (and
+  `#00874a` for the softer step) replaces navy; muted gold `#c9a86a` is the thin
+  accent. The `navy*` tokens in `src/styles.css` keep their names for historical
+  reasons but now carry the emerald scale, so `bg-navy` is correct and
+  intentional — do not "fix" it.
+- **Renamed storage keys keep a legacy read path.** `nasaq-*` keys/databases are
+  current; the `diwan-*` and `faisal-reports` names remain as `LEGACY_*`
+  fallbacks. `migrateLegacyDb` copies an existing library across once behind a
+  settings flag, lets rows already in the new database win, and leaves the old
+  database in place. Do not delete the legacy constants or the old database.
+
 ### Editor persistence contracts (`src/lib/editor/storage.ts`)
 
 - **A new IndexedDB object store needs a `DB_VERSION` bump.** `onupgradeneeded`

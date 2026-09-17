@@ -204,7 +204,7 @@ export function PageRail() {
 
 function thumbnailColor(el: CanvasEl) {
   const isLine = el.type === "line" || el.type === "divider";
-  if (isLine) return el.style?.color || el.style?.fill || "#c6a05a";
+  if (isLine) return el.style?.color || el.style?.fill || "#c9a86a";
   if (el.style?.fill) return el.style.fill;
   if (el.style?.background) return el.style.background;
   if (el.type === "image" || el.type === "logo") return "#dbe2ec";

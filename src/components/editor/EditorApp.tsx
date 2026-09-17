@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useEditor, saveLabel, type SaveState } from "@/lib/editor/store";
+import { BRAND } from "@/lib/brand";
 import { pageSize } from "@/lib/editor/model";
 import { fitImageBox, prepareImage } from "@/lib/editor/images";
 import { LeftPanel } from "./LeftPanel";
@@ -106,7 +107,7 @@ export function EditorApp() {
     return (
       <div className="grid h-full place-items-center bg-navy text-white">
         <div className="text-center">
-          <p className="text-[15px] font-extrabold text-gold-2">فيصل العنزي</p>
+          <p className="text-[15px] font-extrabold text-gold-2">{BRAND.lockup}</p>
           <p className="mt-1 text-[12px] text-white/60">جارٍ تحضير مساحة العمل…</p>
         </div>
       </div>
@@ -429,8 +430,8 @@ function Studio({
             <span className="hidden sm:inline">الرئيسية</span>
           </a>
           <div className="hidden md:block">
-            <strong className="block text-[13px] font-extrabold leading-none">فيصل العنزي</strong>
-            <span className="text-[10px] text-muted">منصة تصميم التقارير</span>
+            <strong className="block text-[13px] font-extrabold leading-none">{BRAND.lockup}</strong>
+            <span className="text-[10px] text-muted">{BRAND.platform}</span>
           </div>
         </div>
 

@@ -10,7 +10,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path("/workspace/project")
-PREFIX = "faisal-reports-platform"
+PREFIX = "nasaq-platform"
 
 
 def main() -> None:
@@ -21,7 +21,7 @@ def main() -> None:
     if missing:
         raise SystemExit(f"tracked but absent on disk: {missing}")
 
-    out = ROOT / "public/downloads/faisal-reports-platform-source.zip"
+    out = ROOT / "public/downloads/nasaq-platform-source.zip"
     out.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for f in files:

@@ -16,7 +16,7 @@ export function SiteHeader({ current }: { current: string }) {
         <a href="/" className="flex items-center gap-2.5">
           <Mark />
           <span className="leading-tight">
-            <strong className="block text-[15px] font-extrabold">{BRAND.owner}</strong>
+            <strong className="block text-[15px] font-extrabold">{BRAND.lockup}</strong>
             <span className="block text-[11px] text-muted">{BRAND.platform}</span>
           </span>
         </a>
@@ -92,9 +92,12 @@ export function SiteFooter() {
         <div>
           <div className="flex items-center gap-2.5">
             <Mark />
-            <strong className="text-[14px] font-extrabold">{BRAND.owner}</strong>
+            <strong className="text-[14px] font-extrabold">{BRAND.lockup}</strong>
           </div>
           <p className="mt-3 text-[12px] leading-6 text-muted">{BRAND.tagline}</p>
+          <p className="mt-2 text-[11px] leading-5 text-muted">
+            من تطوير {BRAND.owner}
+          </p>
         </div>
         <div>
           <h3 className="mb-2 text-[12px] font-extrabold text-muted">روابط</h3>
@@ -118,12 +121,12 @@ export function SiteFooter() {
             {CONTACT_PHONE_DISPLAY}
           </a>
           <p className="mt-3 text-[11px] leading-5 text-muted">
-            المنصة أداة عمل شخصية لمصمم مستقل. جميع الملفات تُحفظ في متصفحك.
+            جميع الملفات تُحفظ في متصفحك وتُصدَّر محليًا، فلا تُرفع إلى أي سيرفر.
           </p>
         </div>
       </div>
       <div className="border-t border-line py-4 text-center text-[11px] text-muted dark:border-white/10">
-        © {new Date().getFullYear()} {BRAND.owner} — {BRAND.platform}
+        © {new Date().getFullYear()} {BRAND.lockup} — {BRAND.platform}
       </div>
     </footer>
   );
@@ -133,8 +136,8 @@ function Mark() {
   return (
     <span className="grid size-9 shrink-0 place-items-center rounded-[9px] bg-navy">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <rect x="4.5" y="3" width="13" height="18" rx="1.6" stroke="#e8c978" strokeWidth="1.6" />
-        <path d="M8 8.5h6M8 12.5h6M8 16.5h3.5" stroke="#e8c978" strokeWidth="1.6" strokeLinecap="round" />
+        <rect x="4.5" y="3" width="13" height="18" rx="1.6" stroke="#e0c894" strokeWidth="1.6" />
+        <path d="M8 8.5h6M8 12.5h6M8 16.5h3.5" stroke="#e0c894" strokeWidth="1.6" strokeLinecap="round" />
       </svg>
     </span>
   );

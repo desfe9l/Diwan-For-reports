@@ -39,6 +39,7 @@ import {
 } from "docx";
 import type { SceneImage, SceneItem, ScenePage, SceneShape, SceneStroke } from "./scene";
 import { parseSvgPath, scaleSegments, type PathSegment } from "./vector-path.ts";
+import { BRAND } from "@/lib/brand";
 
 const mm2pt = (v: number) => v * (72 / 25.4);
 /** Word sizes strokes in eighths of a point; 2 (¼pt) is the practical minimum. */
@@ -479,7 +480,7 @@ export function imageOptions(item: SceneImage): IImageOptions | null {
     altText: {
       id: String(++shapeSeq),
       name: "صورة",
-      description: "صورة من منصة تصميم التقارير",
+      description: `صورة من ${BRAND.nameAr}`,
     },
   } as IImageOptions;
 }
@@ -684,8 +685,8 @@ export async function writeDocx(options: DocxOptions): Promise<Blob> {
 
   const doc = new Document({
     title: options.title,
-    creator: "فيصل العنزي",
-    description: "تقرير مُصدَّر من منصة تصميم التقارير",
+    creator: BRAND.developer,
+    description: `${BRAND.name} — ${BRAND.platformEn}`,
     styles: {
       default: {
         document: {

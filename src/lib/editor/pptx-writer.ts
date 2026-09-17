@@ -15,6 +15,7 @@ import PptxGenJS from "pptxgenjs";
 import type { SceneItem, ScenePage, SceneShape, SceneStroke } from "./scene";
 import type { ShapePart } from "./shapes";
 import { parseSvgPath, scaleSegments } from "./vector-path.ts";
+import { BRAND } from "@/lib/brand";
 
 /** Millimetres → inches, the unit `pptxgenjs` expects. */
 const mm2in = (mm: number) => mm / 25.4;
@@ -598,10 +599,10 @@ function addItem(slide: PptxGenJS.Slide, item: SceneItem, name: string) {
  */
 export async function writePptx(scenes: ScenePage[], title: string): Promise<Blob> {
   const pptx = new PptxGenJS();
-  pptx.author = "فيصل العنزي";
-  pptx.company = "منصة تصميم التقارير";
+  pptx.author = BRAND.developer;
+  pptx.company = BRAND.name;
   pptx.title = title;
-  pptx.subject = "تقرير";
+  pptx.subject = `${BRAND.name} — ${BRAND.platformEn}`;
   pptx.rtlMode = true;
 
   // Declare every distinct page size up front: a project can mix A4 portrait,

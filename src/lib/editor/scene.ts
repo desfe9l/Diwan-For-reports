@@ -172,7 +172,7 @@ export interface ScenePage {
 }
 
 const DEFAULT_INK = "#172033";
-const DEFAULT_ACCENT = "#c6a05a";
+const DEFAULT_ACCENT = "#c9a86a";
 const DEFAULT_LINE = "#bfc7d6";
 
 function cleanColor(value: unknown, fallback: string): string {
@@ -345,7 +345,7 @@ function toItem(el: CanvasEl, ox: number, oy: number, rotation: number): SceneIt
         font,
         size: Number(s.fontSize) || 11,
         align: s.cellAlign || "right",
-        headerFill: cleanColor(s.headerBg, "#071d3d"),
+        headerFill: cleanColor(s.headerBg, "#006c35"),
         headerColor: cleanColor(s.headerColor, "#ffffff"),
         rowFill: cleanColor(s.tableBg, "#ffffff"),
         stripeFill: s.stripeBg ? cleanColor(s.stripeBg, "#f4f6fa") : null,
@@ -361,7 +361,7 @@ function toItem(el: CanvasEl, ox: number, oy: number, rotation: number): SceneIt
       return {
         kind: "shape",
         ...base,
-        fill: cleanColor(s.fill, "#071d3d"),
+        fill: cleanColor(s.fill, "#006c35"),
         stroke: strokeOf(s.borderColor, s.borderWidth, "transparent"),
         shapeId: shapeIdOf(s),
         parts: shapeDef(shapeIdOf(s)).parts,
@@ -437,7 +437,7 @@ function toItem(el: CanvasEl, ox: number, oy: number, rotation: number): SceneIt
         value: Math.min(100, Math.max(0, Number(s.value) || 0)),
         variant: s.variant === "ring" ? "ring" : "bar",
         showValue: s.showValue !== false,
-        fill: cleanColor(s.fill, "#071d3d"),
+        fill: cleanColor(s.fill, "#006c35"),
         track: cleanColor(s.background, "#e8ecf3"),
         color: cleanColor(s.color, DEFAULT_INK),
         font,

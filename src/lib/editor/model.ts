@@ -6,11 +6,18 @@ export const A4 = { w: 210, h: 297 } as const;
 
 export const MIN_SIZE = 4;
 export const GRID = 5;
-/** Legacy single-project autosave slot, migrated into the library on first run. */
-export const STORE_KEY = "diwan-report-project-v2";
-export const LEGACY_STORE_KEY = STORE_KEY;
+/**
+ * Legacy single-project autosave slot, migrated into the library on first run.
+ *
+ * The keys were renamed with the NASAQ rebrand. The old names are kept as
+ * `LEGACY_*` constants so `hydrate` can still pick up work saved before the
+ * rename instead of starting the author from an empty library.
+ */
+export const STORE_KEY = "nasaq-report-project-v2";
+export const LEGACY_STORE_KEY = "diwan-report-project-v2";
 /** Legacy UI prefs slot (active project, dark mode, zoom). */
-export const UI_KEY = "diwan-report-ui-v2";
+export const UI_KEY = "nasaq-report-ui-v2";
+export const LEGACY_UI_KEY = "diwan-report-ui-v2";
 
 export type SizeId = "a4-portrait" | "a4-landscape" | "slide-16-9" | "a3-portrait" | "custom";
 
@@ -255,11 +262,11 @@ export interface Theme {
 export const THEMES: Record<ThemeId, Theme> = {
   official: {
     id: "official",
-    name: "رسمي كحلي",
+    name: "رسمي نَسَق",
     desc: "وثائق حكومية وتقارير أداء",
-    primary: "#071d3d",
-    primarySoft: "#102d57",
-    accent: "#c6a05a",
+    primary: "#006c35",
+    primarySoft: "#00874a",
+    accent: "#c9a86a",
     paper: "#ffffff",
     ink: "#172033",
     muted: "#697184",
@@ -516,8 +523,8 @@ export const PROGRESS_LEVELS = [10, 25, 50, 65, 75, 90, 100];
 export function placeholderImage(kind: "logo" | "image") {
   const title = kind === "logo" ? "LOGO" : "IMAGE";
   const bg = kind === "logo" ? "#ffffff" : "#f4f6fa";
-  const stroke = kind === "logo" ? "#c6a05a" : "#d9dee8";
-  const text = kind === "logo" ? "#071d3d" : "#697184";
+  const stroke = kind === "logo" ? "#c9a86a" : "#d9dee8";
+  const text = kind === "logo" ? "#006c35" : "#697184";
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="520" viewBox="0 0 800 520"><rect width="800" height="520" fill="${bg}"/><rect x="30" y="30" width="740" height="460" rx="26" fill="none" stroke="${stroke}" stroke-width="10"/><path d="M180 350 310 220l92 105 72-70 146 155H160Z" fill="${stroke}" opacity=".45"/><circle cx="275" cy="162" r="42" fill="${stroke}" opacity=".55"/><text x="400" y="450" text-anchor="middle" font-family="Arial" font-size="54" font-weight="700" fill="${text}">${title}</text></svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }

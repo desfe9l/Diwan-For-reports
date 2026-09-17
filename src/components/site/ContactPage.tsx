@@ -16,7 +16,7 @@ export function ContactPage() {
     void hydrate();
   }, [hydrate]);
 
-  const message = `السلام عليكم ${BRAND.owner}، أرغب بالاستفسار عن: ${scope} عبر ${BRAND.platform}.`;
+  const message = `السلام عليكم ${BRAND.owner}، أرغب بالاستفسار عن: ${scope} عبر ${BRAND.nameAr}.`;
 
   const copyNumber = async () => {
     try {
@@ -37,7 +37,7 @@ export function ContactPage() {
         <h1 className="text-[26px] font-extrabold">التواصل</h1>
         <p className="mt-3 text-[15px] leading-8 text-muted">
           للاستفسار عن تصميم تقرير أو مستند رسمي، أو لطلب قالب خاص، يمكنك التواصل مباشرة مع{" "}
-          {BRAND.owner}. المنصة أداة شخصية، والتواصل يتم هاتفياً أو عبر واتساب.
+          {BRAND.owner}. التواصل يتم هاتفياً أو عبر واتساب.
         </p>
 
         <div className="mt-8 rounded-[12px] border border-line bg-white p-6 dark:border-white/10 dark:bg-white/5">

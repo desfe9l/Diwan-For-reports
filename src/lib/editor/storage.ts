@@ -11,7 +11,14 @@ import { uid } from "@/lib/utils";
  * opens and warns instead of losing work silently.
  */
 
-const DB_NAME = "faisal-reports";
+/**
+ * IndexedDB database renamed with the NASAQ rebrand. Projects written before
+ * the rename live in `LEGACY_DB_NAME`; `openDb` copies them across once so an
+ * existing library keeps working instead of appearing empty. The old database
+ * is left untouched as a safety net.
+ */
+const DB_NAME = "nasaq-reports";
+const LEGACY_DB_NAME = "faisal-reports";
 /**
  * Bump this whenever a new object store is added. IndexedDB only fires
  * `onupgradeneeded` when the requested version is higher than what the browser
@@ -22,9 +29,13 @@ const DB_VERSION = 3;
 const PROJECTS = "projects";
 const SETTINGS = "settings";
 const ASSETS = "assets";
-const LS_PROJECTS = "diwan-projects-v1";
-const LS_SETTINGS = "diwan-settings-v1";
-const LS_ASSETS = "diwan-assets-v1";
+const LS_PROJECTS = "nasaq-projects-v1";
+const LS_SETTINGS = "nasaq-settings-v1";
+const LS_ASSETS = "nasaq-assets-v1";
+/** Pre-rebrand localStorage mirror slots, read as a fallback on first run. */
+const LEGACY_LS_PROJECTS = "diwan-projects-v1";
+const LEGACY_LS_SETTINGS = "diwan-settings-v1";
+const LEGACY_LS_ASSETS = "diwan-assets-v1";
 
 /**
  * A reusable uploaded image kept outside any one project.
@@ -46,6 +57,90 @@ export interface Asset {
 export type SettingsKey = "activeProjectId" | "dark" | "zoom";
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
+
+/** Settings-row flag marking the one-time copy out of the pre-rebrand database. */
+const LEGACY_DB_FLAG = "legacyDbMigrated";
+
+/**
+ * Open the pre-rebrand database read-only, without pinning a version, so
+ * whatever the browser already holds is returned as-is. Returns null when the
+ * database does not exist — `indexedDB.open()` would otherwise create it.
+ */
+async function openLegacyDb(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === "undefined") return null;
+  if (typeof indexedDB.databases === "function") {
+    try {
+      const dbs = await indexedDB.databases();
+      if (!dbs.some((d) => d.name === LEGACY_DB_NAME)) return null;
+    } catch {
+      /* `databases()` can be blocked; fall through and try the open */
+    }
+  }
+  return new Promise((resolve) => {
+    let req: IDBOpenDBRequest;
+    try {
+      req = indexedDB.open(LEGACY_DB_NAME);
+    } catch {
+      resolve(null);
+      return;
+    }
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null);
+    req.onblocked = () => resolve(null);
+  });
+}
+
+/** Every store a legacy database can carry, paired with its key path. */
+const MIRRORED_STORES = [
+  { name: PROJECTS, keyPath: "id" },
+  { name: SETTINGS, keyPath: "key" },
+  { name: ASSETS, keyPath: "id" },
+] as const;
+
+/**
+ * One-time copy of the pre-rebrand library into the current database.
+ *
+ * Rows already present in the new database win, so a user who began working
+ * after the rename never has older rows overwrite newer ones. A flag row makes
+ * this run once; the legacy database is deliberately left in place.
+ */
+async function migrateLegacyDb(db: IDBDatabase): Promise<void> {
+  const flag = await tx(db, SETTINGS, "readonly", (t) =>
+    request(t.objectStore(SETTINGS).get(LEGACY_DB_FLAG)),
+  ).catch(() => undefined);
+  if (flag) return;
+
+  const legacy = await openLegacyDb();
+  if (legacy) {
+    for (const { name } of MIRRORED_STORES) {
+      if (!legacy.objectStoreNames.contains(name)) continue;
+      try {
+        const rows = (await tx(legacy, name, "readonly", (t) =>
+          request(t.objectStore(name).getAll()),
+        )) as Record<string, unknown>[];
+        if (!rows.length) continue;
+        const existing = (await tx(db, name, "readonly", (t) =>
+          request(t.objectStore(name).getAllKeys()),
+        )) as IDBValidKey[];
+        const seen = new Set(existing.map((k) => String(k)));
+        const keyPath = MIRRORED_STORES.find((s) => s.name === name)?.keyPath ?? "id";
+        const fresh = rows.filter((row) => !seen.has(String(row[keyPath])));
+        if (fresh.length) {
+          await tx(db, name, "readwrite", (t) => {
+            for (const row of fresh) t.objectStore(name).put(row);
+          });
+        }
+      } catch {
+        /* a partially readable legacy DB must not block startup */
+      }
+    }
+    legacy.close();
+  }
+
+  await tx(db, SETTINGS, "readwrite", (t) =>
+    request(t.objectStore(SETTINGS).put({ key: LEGACY_DB_FLAG, value: true })),
+  ).catch(() => undefined);
+}
 
 function openDb(): Promise<IDBDatabase | null> {
   if (dbPromise) return dbPromise;
@@ -78,7 +173,11 @@ function openDb(): Promise<IDBDatabase | null> {
     req.onsuccess = () => {
       const db = req.result;
       db.onversionchange = () => db.close();
-      resolve(db);
+      // Resolve only after the copy settles, so the first read already sees the
+      // migrated library rather than racing it.
+      void migrateLegacyDb(db)
+        .catch(() => undefined)
+        .then(() => resolve(db));
     };
     req.onerror = () => resolve(null);
     req.onblocked = () => resolve(null);
@@ -121,7 +220,10 @@ function request<T>(req: IDBRequest<T>): Promise<T> {
 const fallback = {
   all(): Project[] {
     try {
-      const raw = localStorage.getItem(LS_PROJECTS);
+      // Read through the pre-rebrand slot until the new one has been written,
+      // so a private-window session keeps the projects it saved before.
+      const raw =
+        localStorage.getItem(LS_PROJECTS) ?? localStorage.getItem(LEGACY_LS_PROJECTS);
       const parsed = raw ? JSON.parse(raw) : [];
       return Array.isArray(parsed) ? (parsed as Project[]) : [];
     } catch {
@@ -217,7 +319,7 @@ export async function getSetting<T = unknown>(key: SettingsKey): Promise<T | nul
   const db = await openDb();
   if (!db) {
     try {
-      const raw = localStorage.getItem(LS_SETTINGS);
+      const raw = localStorage.getItem(LS_SETTINGS) ?? localStorage.getItem(LEGACY_LS_SETTINGS);
       const parsed = raw ? JSON.parse(raw) : {};
       return (parsed?.[key] ?? null) as T | null;
     } catch {
@@ -237,7 +339,11 @@ export async function setSetting(key: SettingsKey, value: unknown): Promise<void
   if (!db) {
     let parsed: Record<string, unknown> = {};
     try {
-      parsed = JSON.parse(localStorage.getItem(LS_SETTINGS) || "{}") || {};
+      parsed = JSON.parse(
+        localStorage.getItem(LS_SETTINGS) ??
+          localStorage.getItem(LEGACY_LS_SETTINGS) ??
+          "{}",
+      ) || {};
     } catch {
       parsed = {};
     }
@@ -295,7 +401,7 @@ export async function clearAllProjects(): Promise<void> {
 const assetFallback = {
   all(): Asset[] {
     try {
-      const raw = localStorage.getItem(LS_ASSETS);
+      const raw = localStorage.getItem(LS_ASSETS) ?? localStorage.getItem(LEGACY_LS_ASSETS);
       const parsed = raw ? JSON.parse(raw) : [];
       return Array.isArray(parsed) ? (parsed as Asset[]) : [];
     } catch {

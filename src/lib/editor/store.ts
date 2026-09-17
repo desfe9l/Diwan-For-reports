@@ -45,7 +45,7 @@ import {
   type Asset,
 } from "./storage";
 import { createProject, createTemplatePage } from "./templates";
-import { FONTS, LEGACY_STORE_KEY, TYPE_NAME, UI_KEY } from "./model";
+import { FONTS, LEGACY_STORE_KEY, LEGACY_UI_KEY, TYPE_NAME, UI_KEY } from "./model";
 import { detectDeviceFonts, type DetectedFont } from "./fonts";
 import { resolveTextBox } from "./text-render";
 import { safeImageSrc } from "./images";
@@ -1305,7 +1305,9 @@ interface PersistedUi {
 
 function readUi(): PersistedUi {
   try {
-    const raw = localStorage.getItem(UI_KEY);
+    // Falls back to the pre-rebrand slot so dark mode, zoom and the active
+    // project survive the rename instead of resetting to defaults.
+    const raw = localStorage.getItem(UI_KEY) ?? localStorage.getItem(LEGACY_UI_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
     return typeof parsed === "object" && parsed ? (parsed as PersistedUi) : {};
   } catch {
