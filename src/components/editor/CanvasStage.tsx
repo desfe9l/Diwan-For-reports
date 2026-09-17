@@ -187,10 +187,19 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
         const raw = (op.orig.rotation || 0) + ((a1 - a0) * 180) / Math.PI;
         next.rotation = ev.shiftKey ? Math.round(raw / 15) * 15 : round(raw % 360);
       }
-      next.w = clamp(next.w, MIN_SIZE, size.w);
-      next.h = clamp(next.h, MIN_SIZE, size.h);
-      next.x = clamp(next.x, 0, Math.max(0, size.w - next.w));
-      next.y = clamp(next.y, 0, Math.max(0, size.h - next.h));
+      // Workspace allows free drag: elements may extend beyond the page
+      // boundary during editing. Only the page content is clipped at export.
+      // We keep a soft boundary (not hard clamp) so the user can freely
+      // position elements outside the page area when needed.
+      const workspaceMargin = 120; // extra workspace area around page (mm)
+      const workspaceW = size.w + workspaceMargin * 2;
+      const workspaceH = size.h + workspaceMargin * 2;
+      next.w = Math.max(clamp(next.w, MIN_SIZE, workspaceW), MIN_SIZE);
+      next.h = Math.max(clamp(next.h, MIN_SIZE, workspaceH), MIN_SIZE);
+      // Soft boundary: allow elements to extend beyond page but keep them
+      // within a generous workspace area so nothing disappears unexpectedly.
+      next.x = Math.max(-workspaceMargin, Math.min(next.x, workspaceW - next.w + workspaceMargin));
+      next.y = Math.max(-workspaceMargin, Math.min(next.y, workspaceH - next.h + workspaceMargin));
       replaceElement(op.parent ? { ...next, x: next.x - op.parent.x, y: next.y - op.parent.y } : next, true);
     };
 

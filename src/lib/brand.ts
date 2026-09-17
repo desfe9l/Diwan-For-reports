@@ -8,9 +8,14 @@
 
 export const BRAND = {
   owner: "فيصل سعود العنزي",
+  developer: "فيصل سعود العنزي",
   platform: "نَسَق",
+  platformEn: "NASAQ",
+  name: "نَسَق",
+  nameAr: "نَسَق",
   tagline: "منصة التصميم والتحرير المؤسسي",
   short: "نَسَق",
+  lockup: "نَسَق | NASAQ",
   description:
     "منصة احترافية لتصميم التقارير والمستندات والعروض المؤسسية بصيغ قابلة للتحرير — من تطوير فيصل سعود العنزي.",
 } as const;
