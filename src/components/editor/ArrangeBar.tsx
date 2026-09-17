@@ -1,5 +1,6 @@
 import { useEditor } from "@/lib/editor/store";
 import type { AlignEdge } from "@/lib/editor/model";
+import { Link, Unlink } from "lucide-react";
 
 /** Align/distribute/group controls for the current selection. */
 const ALIGN_BUTTONS: { edge: AlignEdge; label: string; icon: string }[] = [
@@ -25,6 +26,8 @@ export function ArrangeBar() {
   const distribute = useEditor((s) => s.distribute);
   const group = useEditor((s) => s.group);
   const ungroup = useEditor((s) => s.ungroup);
+  const linkSelected = useEditor((s) => s.linkSelected);
+  const unlinkSelected = useEditor((s) => s.unlinkSelected);
   const selectedId = useEditor((s) => s.selectedId);
   const groupsSelected = useEditor((s) => {
     const page = s.pages.find((p) => p.id === s.activePageId);
@@ -35,7 +38,7 @@ export function ArrangeBar() {
   if (count < 2) return null;
 
   return (
-    <div className="arrange-bar" dir="rtl">
+    <div className="editor-arrange-bar arrange-bar" dir="rtl">
       <span className="arrange-count">{count} عناصر</span>
       <span className="arrange-sep" />
       {ALIGN_BUTTONS.map((b) => (
@@ -83,6 +86,12 @@ export function ArrangeBar() {
         onClick={ungroup}
       >
         فك التجميع
+      </button>
+      <button type="button" className="arrange-btn" title="ربط العناصر" aria-label="ربط العناصر" onClick={linkSelected}>
+        <Link className="size-3.5" />
+      </button>
+      <button type="button" className="arrange-btn" title="فك ربط العناصر" aria-label="فك ربط العناصر" onClick={unlinkSelected}>
+        <Unlink className="size-3.5" />
       </button>
       {selectedId && <span className="sr-only">العنصر الأساسي محدد</span>}
     </div>

@@ -54,7 +54,7 @@ export interface Asset {
   addedAt: number;
 }
 
-export type SettingsKey = "activeProjectId" | "dark" | "zoom";
+export type SettingsKey = "activeProjectId" | "dark" | "zoom" | "focusMode" | "leftOpen" | "rightOpen" | "leftCollapsed" | "rightCollapsed";
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 

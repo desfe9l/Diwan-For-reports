@@ -12,6 +12,7 @@ import {
   EyeOff,
   Grid2x2,
   ImagePlus,
+  Link,
   Lock,
   Trash2,
   Unlock,
@@ -1323,6 +1324,7 @@ function LayerRow({ layer, depth = 0 }: { layer: CanvasEl; depth?: number }) {
             <span className="flex items-center gap-1 pr-1 text-muted">
               {layer.locked && <Lock className="size-3.5" />}
               {layer.hidden && <EyeOff className="size-3.5" />}
+              {layer.linkId && <Link className="size-3.5 text-gold-2" />}
               <span className="text-[10px] tabular-nums">{layer.z}</span>
             </span>
           </button>

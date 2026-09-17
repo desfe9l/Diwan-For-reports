@@ -20,6 +20,8 @@ import {
   FileText,
   Upload,
   Baseline,
+  Eye,
+  X,
 } from "lucide-react";
 import {
   PROGRESS_PRESETS,
@@ -124,6 +126,7 @@ export function LeftPanel({ onUpload }: { onUpload: (kind: "image" | "logo" | "f
   const [customSize, setCustomSize] = useState({ w: 210, h: 297 });
   const [qrBusy, setQrBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [previewTemplate, setPreviewTemplate] = useState<(typeof PAGE_TEMPLATES)[number] | null>(null);
 
   const page = pages.find((p) => p.id === activePageId);
   const activeSizeId = sizeIdOf(page);
@@ -351,7 +354,7 @@ export function LeftPanel({ onUpload }: { onUpload: (kind: "image" | "logo" | "f
               </p>
             </section>
 
-            <AssetLibrary onUpload={() => onUpload("library")} />
+            <AssetLibrary />
 
             <button
               type="button"
@@ -448,19 +451,16 @@ export function LeftPanel({ onUpload }: { onUpload: (kind: "image" | "logo" | "f
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => addTemplatePage(t.id)}
-                  className="grid grid-cols-[46px_1fr] items-center gap-2.5 rounded-[8px] border border-line p-2.5 text-right transition hover:border-navy-2 hover:bg-navy-2/5 dark:border-white/10"
+                  onClick={() => setPreviewTemplate(t)}
+                  className="grid grid-cols-[72px_1fr_auto] items-center gap-2 rounded-[8px] border border-line p-2 text-right transition hover:border-navy-2 hover:bg-navy-2/5 dark:border-white/10"
                 >
-                  <span className="relative h-[58px] w-[46px] overflow-hidden rounded border border-line bg-white">
-                    <span className="absolute inset-x-0 top-0 h-3 bg-navy/85" />
-                    <span className="absolute inset-x-0 top-3 h-0.5 bg-gold" />
-                    <span className="absolute top-6 left-1 h-1.5 w-5 bg-navy/20" />
-                    <span className="absolute top-9 left-1 h-1 w-4 bg-navy/15" />
-                  </span>
+                  <TemplatePreview variant={t.preview} />
                   <span className="min-w-0">
                     <strong className="block text-[12px]">{t.title}</strong>
+                    {t.concept && <span className="block text-[9px] font-bold uppercase tracking-wide text-green">{t.concept}</span>}
                     <span className="block text-[11px] leading-4 text-muted">{t.desc}</span>
                   </span>
+                  <Eye className="size-3.5 shrink-0 text-muted" />
                 </button>
               ))}
               {!templates.length && (
@@ -469,6 +469,22 @@ export function LeftPanel({ onUpload }: { onUpload: (kind: "image" | "logo" | "f
                 </p>
               )}
             </div>
+            {previewTemplate && (
+              <div className="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4" role="dialog" aria-modal="true" aria-label={`معاينة ${previewTemplate.title}`} onClick={() => setPreviewTemplate(null)}>
+                <div className="w-full max-w-sm rounded-[10px] border border-line bg-white p-3 shadow-2xl dark:border-white/10 dark:bg-[#303132]" onClick={(e) => e.stopPropagation()}>
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-[14px] font-extrabold">{previewTemplate.title}</h3>
+                      <p className="mt-0.5 text-[10px] uppercase tracking-wide text-green">{previewTemplate.concept || "Template"}</p>
+                      <p className="mt-1 text-[11px] leading-5 text-muted">{previewTemplate.desc}</p>
+                    </div>
+                    <button type="button" onClick={() => setPreviewTemplate(null)} className="grid size-7 place-items-center rounded-[6px] border border-line dark:border-white/10" title="إغلاق المعاينة" aria-label="إغلاق المعاينة"><X className="size-3.5" /></button>
+                  </div>
+                  <TemplatePreview variant={previewTemplate.preview} large />
+                  <button type="button" onClick={() => { addTemplatePage(previewTemplate.id); setPreviewTemplate(null); }} className="mt-3 h-9 w-full rounded-[7px] bg-navy text-[11px] font-extrabold text-white">إضافة القالب كصفحة قابلة للتحرير</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -677,6 +693,39 @@ export function LeftPanel({ onUpload }: { onUpload: (kind: "image" | "logo" | "f
         )}
       </div>
     </aside>
+  );
+}
+
+function TemplatePreview({
+  variant = "grid",
+  large = false,
+}: {
+  variant?: (typeof PAGE_TEMPLATES)[number]["preview"];
+  large?: boolean;
+}) {
+  const width = large ? "w-full" : "w-[72px]";
+  const height = large ? "h-64" : "h-[64px]";
+  const base = "relative overflow-hidden rounded-[5px] border border-line bg-white dark:border-white/10 dark:bg-white";
+  const block = "absolute block";
+  const green = "#0c3d2c";
+  const gold = "#c6a05a";
+  const ink = "#24352e";
+  const muted = "#aeb8b1";
+  const line = "#d8e0db";
+
+  return (
+    <span className={`${base} ${width} ${height}`} aria-hidden>
+      {variant === "editorial" && <><span className={block} style={{ right: "9%", top: "10%", width: "42%", height: "4%", background: green }} /><span className={block} style={{ right: "9%", top: "22%", width: "62%", height: "17%", background: ink }} /><span className={block} style={{ right: "9%", top: "50%", width: "43%", height: "25%", border: `1px solid ${line}` }} /><span className={block} style={{ left: "12%", top: "44%", width: "15%", height: "18%", background: green }} /></>}
+      {variant === "grid" && <><span className={block} style={{ inset: "0 0 auto", height: "18%", background: green }} /><span className={block} style={{ right: "8%", top: "25%", width: "38%", height: "23%", border: `1px solid ${line}` }} /><span className={block} style={{ left: "8%", top: "25%", width: "38%", height: "23%", border: `1px solid ${line}` }} /><span className={block} style={{ right: "8%", bottom: "12%", width: "38%", height: "22%", background: "#f5f8f5", border: `1px solid ${line}` }} /><span className={block} style={{ left: "8%", bottom: "12%", width: "38%", height: "22%", background: "#f5f8f5", border: `1px solid ${line}` }} /></>}
+      {variant === "data" && <><span className={block} style={{ right: "8%", top: "16%", width: "45%", height: "26%", background: green }} /><span className={block} style={{ left: "8%", top: "15%", width: "25%", height: "22%", background: ink }} /><span className={block} style={{ right: "8%", bottom: "16%", width: "84%", height: "30%", border: `1px solid ${line}` }} /><span className={block} style={{ left: "17%", bottom: "21%", width: "7%", height: "15%", background: gold }} /><span className={block} style={{ left: "29%", bottom: "21%", width: "7%", height: "24%", background: green }} /></>}
+      {variant === "flow" && <><span className={block} style={{ right: "9%", top: "12%", width: "55%", height: "5%", background: green }} /><span className={block} style={{ right: "9%", top: "28%", width: "76%", height: "12%", border: `1px solid ${line}` }} /><span className={block} style={{ right: "18%", top: "46%", width: "67%", height: "14%", background: "#f5f8f5", border: `1px solid ${line}` }} /><span className={block} style={{ right: "27%", top: "66%", width: "58%", height: "16%", border: `1px solid ${line}` }} /></>}
+      {variant === "asymmetric" && <><span className={block} style={{ inset: "0 auto 0 0", width: "30%", background: green }} /><span className={block} style={{ right: "8%", top: "20%", width: "52%", height: "16%", background: ink }} /><span className={block} style={{ right: "12%", top: "47%", width: "27%", height: "18%", background: gold }} /><span className={block} style={{ right: "8%", bottom: "12%", width: "55%", height: "16%", border: `1px solid ${line}` }} /></>}
+      {variant === "modular" && <><span className={block} style={{ right: "8%", top: "15%", width: "48%", height: "27%", border: `1px solid ${line}` }} /><span className={block} style={{ left: "8%", top: "15%", width: "31%", height: "16%", background: green }} /><span className={block} style={{ left: "8%", top: "36%", width: "31%", height: "30%", border: `1px solid ${line}` }} /><span className={block} style={{ right: "8%", bottom: "14%", width: "70%", height: "18%", background: "#f5f8f5" }} /></>}
+      {variant === "executive" && <><span className={block} style={{ left: "44%", top: "12%", width: "12%", height: "8%", borderRadius: "50%", background: gold }} /><span className={block} style={{ right: "20%", top: "31%", width: "60%", height: "9%", background: green }} /><span className={block} style={{ right: "28%", top: "48%", width: "44%", height: "14%", border: `1px solid ${line}` }} /><span className={block} style={{ left: "36%", bottom: "13%", width: "28%", height: "13%", background: ink }} /></>}
+      {variant === "statistical" && <><span className={block} style={{ right: "8%", top: "15%", width: "40%", height: "22%", background: green }} /><span className={block} style={{ left: "8%", top: "16%", width: "23%", height: "15%", background: ink }} /><span className={block} style={{ left: "13%", bottom: "17%", width: "74%", height: "28%", borderBottom: `2px solid ${line}` }} /><span className={block} style={{ left: "20%", bottom: "17%", width: "6%", height: "16%", background: green }} /><span className={block} style={{ left: "34%", bottom: "17%", width: "6%", height: "24%", background: gold }} /><span className={block} style={{ left: "48%", bottom: "17%", width: "6%", height: "20%", background: green }} /></>}
+      {variant === "section" && <><span className={block} style={{ right: "8%", top: "17%", width: "76%", height: "26%", background: green }} /><span className={block} style={{ right: "8%", top: "56%", width: "48%", height: "8%", background: ink }} /><span className={block} style={{ right: "8%", top: "71%", width: "33%", height: "5%", background: muted }} /><span className={block} style={{ left: "10%", bottom: "13%", width: "10%", height: "10%", background: gold, borderRadius: "50%" }} /></>}
+      {variant === "process" && <><span className={block} style={{ right: "8%", top: "18%", width: "80%", height: "5%", background: green }} /><span className={block} style={{ right: "74%", top: "13%", width: "12%", height: "12%", borderRadius: "50%", background: green }} /><span className={block} style={{ right: "51%", top: "13%", width: "12%", height: "12%", borderRadius: "50%", border: `1px solid ${green}` }} /><span className={block} style={{ right: "28%", top: "13%", width: "12%", height: "12%", borderRadius: "50%", border: `1px solid ${green}` }} /><span className={block} style={{ right: "8%", top: "13%", width: "12%", height: "12%", borderRadius: "50%", border: `1px solid ${green}` }} /><span className={block} style={{ right: "8%", bottom: "16%", width: "70%", height: "20%", border: `1px solid ${line}` }} /></>}
+    </span>
   );
 }
 

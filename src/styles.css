@@ -124,6 +124,212 @@
   min-height: 0;
 }
 
+/* Photoshop-inspired chrome. These tokens stop at editor chrome boundaries. */
+.editor-ui {
+  --editor-bg: #252627;
+  --editor-panel: #303132;
+  --editor-toolbar: #2b2c2d;
+  --editor-surface: #38393a;
+  --editor-border: #48494a;
+  --editor-text: #d7d8d9;
+  --editor-text-secondary: #9b9d9f;
+  --editor-hover: #414243;
+  --editor-active: #4b4c4d;
+  --editor-disabled: #252627;
+  background: var(--editor-bg);
+  color: var(--editor-text);
+}
+
+.editor-ui.editor-light {
+  --editor-bg: #e2e3e4;
+  --editor-panel: #f0f0f1;
+  --editor-toolbar: #e8e8e9;
+  --editor-surface: #fafafa;
+  --editor-border: #c9cacc;
+  --editor-text: #28292a;
+  --editor-text-secondary: #686a6c;
+  --editor-hover: #dedfe0;
+  --editor-active: #d3d4d5;
+  --editor-disabled: #bfc0c1;
+}
+
+.editor-ui .editor-toolbar,
+.editor-ui .editor-sidebar,
+.editor-ui .editor-page-rail,
+.editor-ui .editor-arrange-bar {
+  --color-paper: var(--editor-panel);
+  --color-surface: var(--editor-surface);
+  --color-ink: var(--editor-text);
+  --color-muted: var(--editor-text-secondary);
+  --color-line: var(--editor-border);
+  --color-line-2: var(--editor-hover);
+  --color-navy: var(--editor-active);
+  --color-navy-2: #5b5c5d;
+  --color-navy-3: #666768;
+  --color-white: var(--editor-text);
+  background-color: var(--editor-panel) !important;
+  border-color: var(--editor-border) !important;
+  color: var(--editor-text);
+}
+
+.editor-ui .editor-toolbar {
+  background-color: var(--editor-toolbar) !important;
+}
+
+.editor-ui .editor-canvas-workspace,
+.editor-ui .editor-canvas-stage {
+  background-color: var(--editor-bg) !important;
+  color: var(--editor-text);
+}
+
+.editor-ui .editor-canvas-stage {
+  background-image: none;
+}
+
+/* Control surfaces inside chrome only; the report page is not under these selectors. */
+.editor-ui .editor-toolbar button,
+.editor-ui .editor-toolbar input,
+.editor-ui .editor-sidebar button,
+.editor-ui .editor-sidebar input,
+.editor-ui .editor-sidebar select,
+.editor-ui .editor-sidebar textarea,
+.editor-ui .editor-page-rail button,
+.editor-ui .editor-arrange-bar button {
+  border-color: var(--editor-border);
+  color: var(--editor-text);
+}
+
+.editor-ui .editor-toolbar button:hover:not(:disabled),
+.editor-ui .editor-sidebar button:hover:not(:disabled),
+.editor-ui .editor-page-rail button:hover:not(:disabled),
+.editor-ui .editor-arrange-bar button:hover:not(:disabled) {
+  background-color: var(--editor-hover);
+}
+
+.editor-ui .editor-toolbar .bg-navy,
+.editor-ui .editor-sidebar .bg-navy,
+.editor-ui .editor-page-rail .bg-navy {
+  background-color: var(--editor-active) !important;
+  color: var(--editor-text) !important;
+}
+
+.editor-ui .editor-toolbar .bg-white,
+.editor-ui .editor-sidebar .bg-white,
+.editor-ui .editor-page-rail .bg-white {
+  background-color: var(--editor-surface) !important;
+}
+
+.editor-ui .editor-toolbar .text-white,
+.editor-ui .editor-sidebar .text-white,
+.editor-ui .editor-page-rail .text-white {
+  color: var(--editor-text) !important;
+}
+
+.editor-ui .editor-sidebar .text-muted,
+.editor-ui .editor-page-rail .text-muted,
+.editor-ui .editor-toolbar .text-muted {
+  color: var(--editor-text-secondary);
+}
+
+/* Reset inherited UI tokens at the document boundary. No design color is themed. */
+.editor-ui .report-page {
+  --color-ink: #172033;
+  --color-muted: #6b7383;
+  --color-line: #dde2ea;
+  --color-line-2: #edf0f5;
+  --color-surface: #ffffff;
+  --color-paper: #f2f4f8;
+}
+
+.editor-ui.editor-focus .editor-sidebar,
+.editor-ui.editor-focus .editor-page-rail {
+  display: none !important;
+}
+
+.editor-ui.editor-focus .editor-focus-workspace {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.editor-ui .editor-arrange-bar .arrange-count,
+.editor-ui .editor-arrange-bar .arrange-btn {
+  color: var(--editor-text);
+}
+
+.editor-ui .editor-arrange-bar .arrange-sep {
+  background: var(--editor-border);
+}
+
+.editor-ui .editor-status-bar {
+  background: var(--editor-toolbar);
+  border-color: var(--editor-border);
+  color: var(--editor-text-secondary);
+}
+
+.editor-context-backdrop,
+.editor-command-backdrop {
+  background: transparent;
+}
+
+.editor-context-menu,
+.editor-command-menu {
+  background: var(--editor-panel);
+  border-color: var(--editor-border);
+  color: var(--editor-text);
+}
+
+.editor-menu-item:hover:not(:disabled),
+.editor-command-active {
+  background: var(--editor-hover);
+}
+
+.editor-menu-danger {
+  color: #e7a3a0 !important;
+}
+
+.editor-command-menu input::placeholder {
+  color: var(--editor-text-secondary);
+}
+
+.editor-command-menu kbd {
+  min-width: 2.5rem;
+  color: var(--editor-text-secondary);
+  font-size: 10px;
+  text-align: left;
+}
+
+.editor-panel-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 45;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.editor-panel-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: transparent;
+  transition: background-color 120ms ease;
+}
+
+.editor-panel-resize-handle:hover::after,
+.editor-panel-resize-handle:focus-visible::after {
+  background: var(--editor-active);
+}
+
+.editor-panel-resize-left { inset-inline-start: -3px; }
+.editor-panel-resize-right { inset-inline-end: -3px; }
+
+@media (max-width: 1023px) {
+  .editor-panel-resize-handle { display: none; }
+}
+
 /*
  * Panes scroll independently. `overscroll-behavior: contain` stops a flick at
  * the end of a panel list from scrolling the document behind it — the most
@@ -158,7 +364,7 @@
   background-size: 24px 24px;
 }
 
-html.dark .studio-grid {
+.editor-ui.editor-dark .studio-grid {
   background-color: #0f141c;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
@@ -299,7 +505,7 @@ html.dark .studio-grid {
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14);
 }
 
-.dark .arrange-bar {
+.editor-ui.editor-dark .arrange-bar {
   border-color: rgba(255, 255, 255, 0.14);
   background: #161c26;
 }
@@ -312,7 +518,7 @@ html.dark .studio-grid {
   white-space: nowrap;
 }
 
-.dark .arrange-count {
+.editor-ui.editor-dark .arrange-count {
   color: rgba(255, 255, 255, 0.75);
 }
 
@@ -323,7 +529,7 @@ html.dark .studio-grid {
   background: #e2e8f0;
 }
 
-.dark .arrange-sep {
+.editor-ui.editor-dark .arrange-sep {
   background: rgba(255, 255, 255, 0.12);
 }
 
@@ -339,7 +545,7 @@ html.dark .studio-grid {
   cursor: pointer;
 }
 
-.dark .arrange-btn {
+.editor-ui.editor-dark .arrange-btn {
   color: rgba(255, 255, 255, 0.85);
 }
 
@@ -347,7 +553,7 @@ html.dark .studio-grid {
   background: #eef2f8;
 }
 
-.dark .arrange-btn:hover:not(:disabled) {
+.editor-ui.editor-dark .arrange-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.08);
 }
 

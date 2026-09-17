@@ -85,6 +85,13 @@ export function ElementNode({
     commit();
   };
 
+  const handleEditKey = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      finishEdit();
+    }
+  };
+
   if (el.hidden) return null;
 
   return (
@@ -114,7 +121,7 @@ export function ElementNode({
       }}
       onDoubleClick={startEdit}
     >
-      <ElementContent el={el} textRef={textRef} onBlur={finishEdit} />
+      <ElementContent el={el} textRef={textRef} onBlur={finishEdit} onKeyDown={handleEditKey} />
       {selected && interactive && !el.locked && !multi && (
         <>
           {HANDLES.map((h) => (
@@ -144,10 +151,12 @@ function ElementContent({
   el,
   textRef,
   onBlur,
+  onKeyDown,
 }: {
   el: CanvasEl;
   textRef: React.RefObject<HTMLDivElement | null>;
   onBlur: () => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
 }) {
   const s = el.style || {};
   const prepared = prepareText(el);
@@ -195,6 +204,7 @@ function ElementContent({
         style={textStyle}
         onPointerDown={(e) => e.currentTarget.isContentEditable && e.stopPropagation()}
         onBlur={onBlur}
+        onKeyDown={onKeyDown}
       >
         {renderText("")}
       </div>
@@ -219,6 +229,7 @@ function ElementContent({
         }}
         onPointerDown={(e) => e.currentTarget.isContentEditable && e.stopPropagation()}
         onBlur={onBlur}
+        onKeyDown={onKeyDown}
       >
         {renderText("")}
       </div>
@@ -245,6 +256,7 @@ function ElementContent({
         }}
         onPointerDown={(e) => e.currentTarget.isContentEditable && e.stopPropagation()}
         onBlur={onBlur}
+        onKeyDown={onKeyDown}
       >
         {renderText("")}
       </span>
@@ -479,6 +491,7 @@ function ElementContent({
         }}
         onPointerDown={(e) => e.currentTarget.isContentEditable && e.stopPropagation()}
         onBlur={onBlur}
+        onKeyDown={onKeyDown}
       >
         {renderText("معتمد")}
       </div>

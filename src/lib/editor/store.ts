@@ -101,11 +101,14 @@ interface Ui {
   snapGrid: boolean;
   snapElements: boolean;
   previewAll: boolean;
+  focusMode: boolean;
   dark: boolean;
   leftTab: LeftTab;
   rightTab: RightTab;
   leftOpen: boolean;
   rightOpen: boolean;
+  leftCollapsed: boolean;
+  rightCollapsed: boolean;
   exportOpen: boolean;
   pageManagerOpen: boolean;
   saveState: SaveState;
@@ -163,7 +166,7 @@ interface EditorStore extends Project, Ui, History {
   toggle: (
     key: keyof Pick<
       Ui,
-      "showGrid" | "snapGrid" | "snapElements" | "previewAll" | "dark" | "leftOpen" | "rightOpen" | "exportOpen" | "pageManagerOpen"
+      "showGrid" | "snapGrid" | "snapElements" | "previewAll" | "dark" | "leftOpen" | "rightOpen" | "leftCollapsed" | "rightCollapsed" | "focusMode" | "exportOpen" | "pageManagerOpen"
     >,
   ) => void;
   setLeftTab: (t: LeftTab) => void;
@@ -185,6 +188,8 @@ interface EditorStore extends Project, Ui, History {
    * everything would pick up.
    */
   selectAll: () => void;
+  linkSelected: () => void;
+  unlinkSelected: () => void;
   /** Step into a group so its children can be picked individually. */
   enterGroup: (id: string | null) => void;
   /** Selected elements of the active page, primary first. */
@@ -197,7 +202,7 @@ interface EditorStore extends Project, Ui, History {
   renameElement: (id: string, name: string) => void;
   setElementFlag: (id: string, flag: "locked" | "hidden", value?: boolean) => void;
   moveLayer: (id: string, dir: -1 | 1) => void;
-  addElement: (type: ElType, over?: Partial<CanvasEl>) => void;
+  addElement: (type: ElType, over?: Partial<CanvasEl>) => string | undefined;
   updateElement: (id: string, patch: Partial<CanvasEl>, live?: boolean) => void;
   updateStyle: (id: string, patch: CanvasEl["style"], live?: boolean) => void;
   replaceElement: (el: CanvasEl, live?: boolean) => void;
@@ -264,6 +269,15 @@ const activePageOf = (s: { pages: Page[]; activePageId: string }) =>
 function mapElement(page: Page, id: string, fn: (el: CanvasEl) => CanvasEl): Page {
   const walk = (list: CanvasEl[]): CanvasEl[] =>
     list.map((el) => (el.id === id ? fn(el) : el.children?.length ? { ...el, children: walk(el.children) } : el));
+  return { ...page, elements: walk(page.elements) };
+}
+
+function mapElements(page: Page, ids: Set<string>, fn: (el: CanvasEl) => CanvasEl): Page {
+  const walk = (list: CanvasEl[]): CanvasEl[] =>
+    list.map((el) => {
+      const next = ids.has(el.id) ? fn(el) : el;
+      return next.children?.length ? { ...next, children: walk(next.children) } : next;
+    });
   return { ...page, elements: walk(page.elements) };
 }
 
@@ -400,11 +414,14 @@ export const useEditor = create<EditorStore>((set, get) => {
     snapGrid: true,
     snapElements: true,
     previewAll: false,
-    dark: false,
+    focusMode: false,
+    dark: true,
     leftTab: "elements",
     rightTab: "properties",
     leftOpen: false,
     rightOpen: false,
+    leftCollapsed: false,
+    rightCollapsed: false,
     exportOpen: false,
     pageManagerOpen: false,
     saveState: "idle",
@@ -477,7 +494,12 @@ export const useEditor = create<EditorStore>((set, get) => {
         set({
           projects: list,
           projectsLoading: false,
-          dark: Boolean(ui.dark),
+          dark: ui.dark == null ? true : Boolean(ui.dark),
+          focusMode: Boolean(ui.focusMode),
+          leftOpen: Boolean(ui.leftOpen),
+          rightOpen: Boolean(ui.rightOpen),
+          leftCollapsed: Boolean(ui.leftCollapsed),
+          rightCollapsed: Boolean(ui.rightCollapsed),
           zoom: typeof ui.zoom === "number" ? clamp(ui.zoom, 0.35, 1.6) : 0.82,
         });
         if (active) applyProject(active, { zoom: get().zoom });
@@ -493,7 +515,6 @@ export const useEditor = create<EditorStore>((set, get) => {
         set({ assetsLoading: false });
       }
 
-      document.documentElement.classList.toggle("dark", get().dark);
       document.documentElement.lang = "ar";
       document.documentElement.dir = "rtl";
       set({ hydrated: true, past: [JSON.stringify(projectSlice(get()))], future: [], saveState: "saved", savedAt: Date.now() });
@@ -647,9 +668,8 @@ export const useEditor = create<EditorStore>((set, get) => {
     toggle: (key) => {
       const next = !get()[key];
       set({ [key]: next } as Partial<EditorStore>);
-      if (key === "dark") {
-        document.documentElement.classList.toggle("dark", next);
-        void setSetting("dark", next);
+      if (key === "dark" || key === "focusMode" || key === "leftOpen" || key === "rightOpen" || key === "leftCollapsed" || key === "rightCollapsed") {
+        void setSetting(key, next);
       }
     },
     setLeftTab: (leftTab) => {
@@ -707,6 +727,36 @@ export const useEditor = create<EditorStore>((set, get) => {
           .filter((el) => !el.locked && !el.hidden)
           .map((el) => el.id),
       ),
+
+    linkSelected: () => {
+      const s = get();
+      const page = activePageOf(s);
+      const picked = s.selectedIds
+        .map((id) => locate(page, id)?.el)
+        .filter((el): el is CanvasEl => Boolean(el))
+        .filter((el) => !el.locked);
+      if (picked.length < 2) {
+        toast.error("حدّد عنصرين أو أكثر للربط");
+        return;
+      }
+      const linkId = uid("link");
+      const ids = new Set(picked.map((el) => el.id));
+      const next = { ...page, elements: page.elements.map((el) => (ids.has(el.id) ? { ...el, linkId } : el)) };
+      set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
+      pushHistory();
+      toast.success("تم ربط العناصر — بقيت مستقلة ويمكن فك الربط لاحقًا");
+    },
+
+    unlinkSelected: () => {
+      const s = get();
+      const page = activePageOf(s);
+      const ids = new Set(s.selectedIds);
+      if (!s.selectedIds.length) return;
+      const next = { ...page, elements: page.elements.map((el) => (ids.has(el.id) ? { ...el, linkId: undefined } : el)) };
+      set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
+      pushHistory();
+      toast.success("تم فك ربط العناصر");
+    },
 
     enterGroup: (id) => set({ enteredGroupId: id }),
 
@@ -873,7 +923,7 @@ export const useEditor = create<EditorStore>((set, get) => {
     addElement: (type, over) => {
       const s = get();
       const page = activePageOf(s);
-      if (!page) return;
+      if (!page) return undefined;
       const theme = THEMES[s.theme];
       const size = pageSize(page);
       const el = createElement(
@@ -893,6 +943,7 @@ export const useEditor = create<EditorStore>((set, get) => {
         rightTab: "properties",
       });
       pushHistory();
+      return el.id;
     },
 
     updateElement: (id, patch, live) => {
@@ -1098,7 +1149,7 @@ export const useEditor = create<EditorStore>((set, get) => {
       if (!ids.size) return;
       // A locked group cannot be toggled: unlocking it would be the only way out
       // of a state the author just chose.
-      const next = { ...page, elements: page.elements.map((e) => (ids.has(e.id) ? { ...e, locked: !e.locked } : e)) };
+      const next = mapElements(page, ids, (el) => ({ ...el, locked: !el.locked }));
       set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
       pushHistory();
     },
@@ -1109,7 +1160,7 @@ export const useEditor = create<EditorStore>((set, get) => {
       if (!page) return;
       const ids = new Set(s.selectedIds);
       if (!ids.size) return;
-      const next = { ...page, elements: page.elements.map((e) => (ids.has(e.id) ? { ...e, hidden: !e.hidden } : e)) };
+      const next = mapElements(page, ids, (el) => ({ ...el, hidden: !el.hidden }));
       set({ pages: s.pages.map((p) => (p.id === page.id ? next : p)) });
       pushHistory();
     },
@@ -1301,6 +1352,11 @@ interface PersistedUi {
   activeProjectId?: string;
   dark?: boolean;
   zoom?: number;
+  focusMode?: boolean;
+  leftOpen?: boolean;
+  rightOpen?: boolean;
+  leftCollapsed?: boolean;
+  rightCollapsed?: boolean;
 }
 
 function readUi(): PersistedUi {

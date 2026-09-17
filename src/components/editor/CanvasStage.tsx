@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { MIN_SIZE, pageSize, type Box, type CanvasEl, type Page } from "@/lib/editor/model";
+import { findElement, MIN_SIZE, pageSize, type Box, type CanvasEl, type Page } from "@/lib/editor/model";
 import { useEditor } from "@/lib/editor/store";
 import { prepareText } from "@/lib/editor/text-render";
 import { clamp, cn, round } from "@/lib/utils";
@@ -16,6 +16,7 @@ type Op =
       origins: Record<string, { x: number; y: number }>;
       orig: CanvasEl;
       pageId: string;
+      parent?: { x: number; y: number };
     }
   | null;
 
@@ -80,6 +81,7 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
     el: CanvasEl,
     kind: "move" | "resize" | "rotate",
     handle?: string,
+    parent?: { x: number; y: number },
   ) => {
     if (el.locked) {
       select(el.id);
@@ -120,10 +122,17 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
     // the press was a shift-toggle, which is a selection change and not a drag.
     const draggingIds =
       kind !== "move" || e.shiftKey ? [el.id] : selectedSet.has(el.id) ? selectedIds : [el.id];
+    const linkedIds =
+      kind === "move" && !e.shiftKey
+        ? page.elements
+            .filter((candidate) => candidate.linkId && draggingIds.some((id) => page.elements.find((item) => item.id === id)?.linkId === candidate.linkId))
+            .map((candidate) => candidate.id)
+        : [];
+    const gestureIds = [...new Set([...draggingIds, ...linkedIds])];
 
     const origins: Record<string, { x: number; y: number }> = {};
     if (kind === "move" && !e.shiftKey) {
-      for (const id of draggingIds) {
+      for (const id of gestureIds) {
         const found = page.elements.find((x) => x.id === id);
         if (found) origins[id] = { x: found.x, y: found.y };
       }
@@ -138,6 +147,7 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
       origins,
       orig: { ...el, style: { ...el.style } },
       pageId: page.id,
+      parent,
     };
 
     const others = page.elements.filter((x) => x.id !== el.id && !x.hidden);
@@ -181,7 +191,7 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
       next.h = clamp(next.h, MIN_SIZE, size.h);
       next.x = clamp(next.x, 0, Math.max(0, size.w - next.w));
       next.y = clamp(next.y, 0, Math.max(0, size.h - next.h));
-      replaceElement(next, true);
+      replaceElement(op.parent ? { ...next, x: next.x - op.parent.x, y: next.y - op.parent.y } : next, true);
     };
 
     const up = () => {
@@ -203,7 +213,7 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
    * their absolute page positions.
    */
   const pickables = (page: Page): { id: string; box: Box }[] => {
-    const entered = enteredGroupId ? page.elements.find((e) => e.id === enteredGroupId) : null;
+    const entered = enteredGroupId ? findElement(page.elements, enteredGroupId)?.el || null : null;
     if (entered?.children?.length) {
       return entered.children.map((child) => ({
         id: child.id,
@@ -267,7 +277,7 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
 
   return (
     <div
-      className={cn("studio-grid relative min-h-0 min-w-0 overflow-auto px-6 py-8", dropping && "is-dropping")}
+      className={cn("editor-canvas-stage studio-grid relative min-h-0 min-w-0 overflow-auto px-6 py-8", dropping && "is-dropping")}
       dir="ltr"
       onPointerDown={() => select(null)}
       onDragOver={(e) => {
@@ -301,7 +311,7 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
         {visible.map((page) => {
           const size = pageSize(page);
           const isActive = page.id === activePageId;
-          const entered = enteredGroupId ? page.elements.find((e) => e.id === enteredGroupId) : null;
+          const entered = enteredGroupId ? findElement(page.elements, enteredGroupId)?.el || null : null;
           const enteredKids = entered?.children ?? [];
           return (
             <div key={page.id} className="page-frame" style={{ transform: `scale(${zoom})` }}>
@@ -365,7 +375,7 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
                                   selected={selectedSet.has(child.id)}
                                   multi={selectedSet.size > 1}
                                   interactive
-                                  onPointerDown={(ev, kind, handle) => startOp(ev, page, abs, kind, handle)}
+                                  onPointerDown={(ev, kind, handle) => startOp(ev, page, abs, kind, handle, { x: entered.x, y: entered.y })}
                                 />
                               );
                             })}

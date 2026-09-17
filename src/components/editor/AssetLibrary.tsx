@@ -1,10 +1,12 @@
 import { useState, useRef } from "react";
-import { Check, ImagePlus, Pencil, Trash2, X } from "lucide-react";
+import { Check, Eye, ImagePlus, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useEditor } from "@/lib/editor/store";
 import type { Asset } from "@/lib/editor/storage";
 import { cn } from "@/lib/utils";
 
-export function AssetLibrary({ onUpload }: { onUpload: () => void }) {
+type PendingAsset = Asset & { fileName: string };
+
+export function AssetLibrary() {
   const assets = useEditor((s) => s.assets);
   const assetsLoading = useEditor((s) => s.assetsLoading);
   const addElement = useEditor((s) => s.addElement);
@@ -15,6 +17,9 @@ export function AssetLibrary({ onUpload }: { onUpload: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
+  const [pending, setPending] = useState<PendingAsset[]>([]);
+  const [preview, setPreview] = useState<Asset | PendingAsset | null>(null);
+  const [savingPending, setSavingPending] = useState(false);
 
   const place = (asset: Asset) => {
     const max = { w: 90, h: 90 };
@@ -22,8 +27,8 @@ export function AssetLibrary({ onUpload }: { onUpload: () => void }) {
     addElement("image", {
       src: asset.src,
       name: asset.name,
-      w: Math.max(5, Math.round(asset.w * scale)),
-      h: Math.max(5, Math.round(asset.h * scale)),
+      w: Math.max(12, Math.round(asset.w * scale)),
+      h: Math.max(12, Math.round(asset.h * scale)),
     });
   };
 
@@ -37,50 +42,77 @@ export function AssetLibrary({ onUpload }: { onUpload: () => void }) {
     setEditingId(null);
   };
 
-  // دالة التعامل مع اختيار عدة ملفات دفعة واحدة
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      // قراءة الصورة وتحويلها إلى Base64 أو رفعها للمكتبة
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const src = event.target?.result as string;
-        if (src) {
-          // استخراج أبعاد الصورة الحقيقية للحفاظ على نسبتها
-          const img = new Image();
-          img.onload = () => {
-            // استدعاء دالة إضافة عنصر للمكتبة (أو دالة الرفع المتاحة لديك)
-            if (typeof addAsset === "function") {
-              void addAsset({
-                name: file.name.replace(/\.[^/.]+$/, ""), // اسم الملف بدون الامتداد
-                src,
-                w: img.width || 100,
-                h: img.height || 100,
-              });
-            }
-          };
-          img.src = src;
-        }
-      };
-      reader.readAsDataURL(file);
+    const next: PendingAsset[] = [];
+    for (const file of Array.from(files)) {
+      const src = await readImage(file);
+      if (!src) continue;
+      const dimensions = await imageDimensions(src);
+      next.push({
+        id: `pending-${file.name}-${file.lastModified}`,
+        fileName: file.name,
+        name: file.name.replace(/\.[^/.]+$/, "").slice(0, 40) || "عنصر",
+        src,
+        w: dimensions.w,
+        h: dimensions.h,
+        addedAt: Date.now(),
+      });
     }
-
-    // إعادة تعيين الـ input ليقبل نفس الملفات لو رغب المستخدم مجدداً
+    setPending(next);
     e.target.value = "";
-    onUpload();
+  };
+
+  const savePending = async () => {
+    if (savingPending || pending.length === 0) return;
+    setSavingPending(true);
+    try {
+      for (const item of pending) {
+        await addAsset({ name: item.name, src: item.src, w: item.w, h: item.h });
+      }
+      setPending([]);
+    } finally {
+      setSavingPending(false);
+    }
   };
 
   return (
-    <section>
-      <header className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="text-[11px] font-extrabold tracking-wide text-muted">مكتبة العناصر</h3>
-        {assets.length > 0 && (
-          <span className="text-[10px] tabular-nums text-muted">{assets.length}</span>
-        )}
+    <section className="grid gap-2">
+      <header className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="text-[12px] font-extrabold tracking-wide">مكتبة العناصر</h3>
+          <p className="mt-0.5 text-[10px] text-muted">معاينة قبل الحفظ، ثم إدراج وتعديل مباشر</p>
+        </div>
+        <span className="rounded-full bg-line-2 px-2 py-1 text-[10px] font-bold tabular-nums text-muted dark:bg-white/10">
+          {assets.length}
+        </span>
       </header>
+
+      {pending.length > 0 && (
+        <div className="rounded-[8px] border border-gold/60 bg-gold/2 p-2 dark:bg-gold/10">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div>
+              <p className="text-[11px] font-extrabold">معاينة قبل الحفظ</p>
+              <p className="text-[9px] text-muted">{pending.length} ملف جاهز للمراجعة</p>
+            </div>
+            <button type="button" onClick={() => setPending([])} className="grid size-6 place-items-center rounded-[6px] text-muted" title="إلغاء الملفات" aria-label="إلغاء الملفات">
+              <X className="size-3.5" />
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {pending.map((item) => (
+              <button key={item.id} type="button" onClick={() => setPreview(item)} className="overflow-hidden rounded-[6px] border border-line bg-white p-1 text-start dark:border-white/10 dark:bg-white/5" title={`معاينة ${item.name}`}>
+                <div className="grid h-14 place-items-center bg-line-2/50 dark:bg-white/5"><img src={item.src} alt={item.name} className="max-h-12 max-w-full object-contain" /></div>
+                <span className="mt-1 block truncate text-[9px]">{item.name}</span>
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={() => void savePending()} disabled={savingPending} className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-[6px] bg-navy text-[10px] font-extrabold text-white disabled:opacity-50">
+            <Check className="size-3.5" /> {savingPending ? "جارٍ الحفظ…" : "حفظ الملفات في المكتبة"}
+          </button>
+        </div>
+      )}
 
       {assetsLoading ? (
         <p className="text-[10px] text-muted">جارٍ تحميل المكتبة…</p>
@@ -91,11 +123,11 @@ export function AssetLibrary({ onUpload }: { onUpload: () => void }) {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-2 gap-2">
           {assets.map((asset) => (
-            <div key={asset.id} className="group relative">
+            <div key={asset.id} className="group relative rounded-[8px] border border-line bg-white/60 p-1.5 dark:border-white/10 dark:bg-white/5">
               {editingId === asset.id ? (
-                <div className="flex h-16 flex-col gap-1 rounded-[8px] border border-navy-2 p-1 dark:border-gold/60">
+                <div className="flex h-20 flex-col gap-1 rounded-[6px] border border-navy-2 p-1 dark:border-gold/60">
                   <input
                     autoFocus
                     value={draftName}
@@ -132,25 +164,27 @@ export function AssetLibrary({ onUpload }: { onUpload: () => void }) {
                     onClick={() => place(asset)}
                     title={`إضافة "${asset.name}" إلى الصفحة`}
                     className={cn(
-                      "grid h-16 w-full place-items-center overflow-hidden rounded-[8px]",
-                      "border border-line bg-white/60 transition hover:border-navy-2 dark:border-white/10 dark:bg-white/5",
+                      "grid h-20 w-full place-items-center overflow-hidden rounded-[6px]",
+                      "border border-line bg-white transition hover:border-navy-2 dark:border-white/10 dark:bg-white/5",
                     )}
                   >
                     <img
                       src={asset.src}
                       alt={asset.name}
-                      className="max-h-14 max-w-full object-contain"
+                      className="max-h-[4.5rem] max-w-full object-contain"
                     />
                   </button>
-                  <span className="mt-0.5 block truncate text-center text-[9px] text-muted">
+                  <span className="mt-1 block truncate text-center text-[9px] text-muted">
                     {asset.name}
                   </span>
-                  <div className="absolute end-0.5 top-0.5 flex gap-0.5 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+                  <div className="mt-1 flex items-center justify-center gap-1">
+                    <button type="button" onClick={() => setPreview(asset)} title="معاينة" aria-label="معاينة" className="grid size-6 place-items-center rounded-[5px] border border-line text-muted dark:border-white/10"><Eye className="size-3" /></button>
+                    <button type="button" onClick={() => place(asset)} title="إدراج في الصفحة" aria-label="إدراج في الصفحة" className="grid size-6 place-items-center rounded-[5px] bg-navy text-white"><Plus className="size-3" /></button>
                     <button
                       type="button"
                       onClick={() => startRename(asset)}
                       title="إعادة تسمية"
-                      className="grid size-4 place-items-center rounded-[4px] bg-white/90 text-navy-2 shadow-sm dark:bg-navy-2/90 dark:text-white"
+                      className="grid size-6 place-items-center rounded-[5px] border border-line text-navy-2 dark:border-white/10 dark:text-white"
                     >
                       <Pencil className="size-2.5" />
                     </button>
@@ -158,7 +192,7 @@ export function AssetLibrary({ onUpload }: { onUpload: () => void }) {
                       type="button"
                       onClick={() => void removeAsset(asset.id)}
                       title="حذف من المكتبة"
-                      className="grid size-4 place-items-center rounded-[4px] bg-white/90 text-red-600 shadow-sm dark:bg-navy-2/90 dark:text-red-400"
+                      className="grid size-6 place-items-center rounded-[5px] border border-line text-red-600 dark:border-white/10 dark:text-red-400"
                     >
                       <Trash2 className="size-2.5" />
                     </button>
@@ -170,7 +204,6 @@ export function AssetLibrary({ onUpload }: { onUpload: () => void }) {
         </div>
       )}
 
-      {/* عنصر رفع الملفات المخفي المزود بخاصية multiple لاختيار عدة صور معاً */}
       <input
         type="file"
         ref={fileInputRef}
@@ -183,10 +216,41 @@ export function AssetLibrary({ onUpload }: { onUpload: () => void }) {
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
-        className="mt-1.5 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-[8px] border border-line text-[11px] font-extrabold dark:border-white/10"
+        className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-[8px] border border-line text-[11px] font-extrabold dark:border-white/10"
       >
         <ImagePlus className="size-3.5" /> حفظ عنصر جديد في المكتبة
       </button>
+
+      {preview && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-navy/55 p-4" role="dialog" aria-modal="true" aria-label={`معاينة ${preview.name}`} onClick={() => setPreview(null)}>
+          <div className="w-full max-w-sm rounded-[10px] bg-white p-3 shadow-xl dark:bg-[#161c26]" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div><p className="text-[12px] font-extrabold">معاينة العنصر</p><p className="max-w-[15rem] truncate text-[10px] text-muted">{preview.name}</p></div>
+              <button type="button" onClick={() => setPreview(null)} className="grid size-7 place-items-center rounded-[6px] border border-line dark:border-white/10" title="إغلاق المعاينة" aria-label="إغلاق المعاينة"><X className="size-4" /></button>
+            </div>
+            <div className="grid min-h-48 place-items-center rounded-[8px] border border-line bg-line-2/50 p-4 dark:border-white/10 dark:bg-white/5"><img src={preview.src} alt={preview.name} className="max-h-64 max-w-full object-contain" /></div>
+            <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-muted"><span>{preview.w} × {preview.h} px</span><button type="button" onClick={() => { place(preview); setPreview(null); }} className="inline-flex h-8 items-center gap-1.5 rounded-[6px] bg-navy px-3 font-extrabold text-white"><Plus className="size-3.5" /> إدراج وتحديد</button></div>
+          </div>
+        </div>
+      )}
     </section>
   );
+}
+
+function readImage(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+function imageDimensions(src: string): Promise<{ w: number; h: number }> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve({ w: image.naturalWidth || 100, h: image.naturalHeight || 100 });
+    image.onerror = () => resolve({ w: 100, h: 100 });
+    image.src = src;
+  });
 }

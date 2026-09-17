@@ -6,6 +6,7 @@ import {
   Presentation,
   FileCode2,
   FileJson,
+  Eye,
   X,
   TriangleAlert,
   Loader2,
@@ -46,6 +47,8 @@ export function ExportDialog() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [previewPages, setPreviewPages] = useState<CapturedPage[]>([]);
+  const [previewBusy, setPreviewBusy] = useState(false);
 
   if (!open) return null;
 
@@ -87,6 +90,25 @@ export function ExportDialog() {
     } finally {
       setBusy(false);
       setProgress("");
+    }
+  };
+
+  const preview = async () => {
+    setPreviewBusy(true);
+    setError(null);
+    try {
+      const targets = selected.flatMap((p) => {
+        const node = document.querySelector(`[data-export-page="${p.id}"]`) as HTMLElement | null;
+        if (!node) return [];
+        const size = pageSize(p);
+        return [{ node, w: size.w, h: size.h }];
+      });
+      if (targets.length !== selected.length) throw new Error("تعذر تجهيز معاينة التصدير");
+      setPreviewPages(await capturePages(targets, Math.min(2, quality), undefined, 0));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "تعذر تجهيز المعاينة");
+    } finally {
+      setPreviewBusy(false);
     }
   };
 
@@ -230,6 +252,15 @@ export function ExportDialog() {
         <div className="mt-5 flex gap-2">
           <button
             type="button"
+            disabled={busy || previewBusy}
+            onClick={() => void preview()}
+            className="inline-flex h-11 items-center justify-center gap-1.5 rounded-[10px] border border-line px-4 text-[13px] font-bold disabled:opacity-40 dark:border-white/10"
+          >
+            <Eye className="size-4" />
+            {previewBusy ? "جاري المعاينة…" : "معاينة"}
+          </button>
+          <button
+            type="button"
             disabled={busy}
             onClick={() => void run()}
             className="h-11 flex-1 rounded-[10px] bg-navy text-[14px] font-extrabold text-white disabled:opacity-50"
@@ -245,6 +276,22 @@ export function ExportDialog() {
             إلغاء
           </button>
         </div>
+
+        {previewPages.length > 0 && (
+          <div className="fixed inset-0 z-[90] grid place-items-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="معاينة التصدير">
+            <div className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-[12px] border border-line bg-white p-4 dark:border-white/10 dark:bg-[#303132]">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div><h3 className="text-[15px] font-extrabold">معاينة التصدير</h3><p className="text-[11px] text-muted">{previewPages.length} صفحة · مطابقة لمقاس المستند</p></div>
+                <button type="button" onClick={() => setPreviewPages([])} className="grid size-8 place-items-center rounded-[7px] border border-line dark:border-white/10" title="إغلاق المعاينة" aria-label="إغلاق المعاينة"><X className="size-4" /></button>
+              </div>
+              <div className="editor-pane-scroll min-h-0 flex-1 overflow-auto rounded-[8px] bg-[#252627] p-4">
+                <div className="grid gap-5 justify-items-center">
+                  {previewPages.map((page, index) => <figure key={index} className="grid gap-1 justify-items-center"><img src={page.canvas.toDataURL("image/png")} alt={`معاينة الصفحة ${index + 1}`} className="max-h-[68vh] max-w-full object-contain shadow-2xl" /><figcaption className="text-[10px] text-white/65">صفحة {index + 1}</figcaption></figure>)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

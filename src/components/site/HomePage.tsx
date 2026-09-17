@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ArrowLeft, FileText, FolderOpen, LayoutTemplate, Table2, Gauge, FileDown } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, FileText, FolderOpen, LayoutTemplate, Table2, Gauge, FileDown, Palette, ShieldCheck, Workflow } from "lucide-react";
 import { toast } from "sonner";
 import { BRAND } from "@/lib/brand";
 import { PACKS } from "@/lib/editor/templates";
@@ -7,12 +7,13 @@ import { type PackId } from "@/lib/editor/model";
 import { useEditor } from "@/lib/editor/store";
 import { SiteFooter, SiteHeader } from "@/components/site/SiteChrome";
 import { ProjectCard } from "@/components/site/ProjectCard";
+import { PRODUCT_COPY } from "@/lib/product/copy";
 
 const HIGHLIGHTS: { icon: typeof FileText; title: string; desc: string }[] = [
-  { icon: LayoutTemplate, title: "صفحات وأغلفة", desc: "أغلفة رسمية وصفحات داخلية جاهزة قابلة للتعديل." },
-  { icon: Table2, title: "جداول وإحصاءات", desc: "جداول قابلة للتحرير وبطاقات أرقام ومؤشرات ونِسب." },
-  { icon: Gauge, title: "ضبط دقيق", desc: "موضع، مقاس، دوران، شفافية، خطوط، ألوان، إطار وظل." },
-  { icon: FileDown, title: "تصدير احترافي", desc: "PDF وPNG وJPG وPowerPoint وWord وHTML بأبعاد دقيقة." },
+  { icon: LayoutTemplate, title: PRODUCT_COPY.capabilities[0][0], desc: PRODUCT_COPY.capabilities[0][1] },
+  { icon: Table2, title: PRODUCT_COPY.capabilities[1][0], desc: PRODUCT_COPY.capabilities[1][1] },
+  { icon: Palette, title: PRODUCT_COPY.capabilities[2][0], desc: PRODUCT_COPY.capabilities[2][1] },
+  { icon: FileDown, title: PRODUCT_COPY.capabilities[3][0], desc: PRODUCT_COPY.capabilities[3][1] },
 ];
 
 export function HomePage() {
@@ -46,20 +47,11 @@ export function HomePage() {
 
       <main>
         <section className="border-b border-line bg-white dark:border-white/10 dark:bg-[#161c26]">
-          <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
-            <p className="mb-3 text-[12px] font-bold tracking-[0.2em] text-navy-2 dark:text-gold-2">
-              A4 · A3 · 16:9 · RTL أولاً
-            </p>
-            <h1 className="max-w-3xl text-[32px] font-extrabold leading-[1.3] sm:text-[44px]">
-              صمّم تقاريرك باحتراف
-            </h1>
-            <p className="mt-3 text-[15px] font-bold text-navy-2 dark:text-gold-2">
-              {BRAND.lockup} — {BRAND.platformEn}
-            </p>
-            <p className="mt-4 max-w-2xl text-[15px] leading-8 text-muted sm:text-[16px]">
-              {BRAND.description} محرر صفحات متعددة بنصوص وجداول وصور وشعارات ومؤشرات، مع
-              تصدير PDF عالي الجودة ومقاسات دقيقة للمطبوعات.
-            </p>
+          <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[1.05fr_.95fr] lg:items-center">
+            <div>
+            <p className="mb-3 text-[12px] font-bold tracking-[0.2em] text-green dark:text-gold-2">{PRODUCT_COPY.hero.eyebrow}</p>
+            <h1 className="max-w-3xl text-[32px] font-extrabold leading-[1.3] sm:text-[48px]">{PRODUCT_COPY.hero.title}</h1>
+            <p className="mt-4 max-w-2xl text-[15px] leading-8 text-muted sm:text-[17px]">{PRODUCT_COPY.hero.description}</p>
 
             <div className="mt-8 flex flex-wrap gap-3">
               <button
@@ -67,17 +59,10 @@ export function HomePage() {
                 onClick={() => void start("official")}
                 className="inline-flex h-12 items-center gap-2 rounded-[10px] bg-navy px-5 text-[14px] font-extrabold text-white"
               >
-                إنشاء مشروع جديد
+                {PRODUCT_COPY.hero.primary}
                 <ArrowLeft className="size-4" />
               </button>
-              <button
-                type="button"
-                onClick={() => fileInput.current?.click()}
-                className="inline-flex h-12 items-center gap-2 rounded-[10px] border border-line px-5 text-[14px] font-bold dark:border-white/10"
-              >
-                <FolderOpen className="size-4" />
-                فتح مشروع من ملف
-              </button>
+              <a href="/contact?request=institutional" className="inline-flex h-12 items-center gap-2 rounded-[10px] border border-line px-5 text-[14px] font-bold dark:border-white/10">{PRODUCT_COPY.hero.secondary}</a>
               <a
                 href="/projects"
                 className="inline-flex h-12 items-center rounded-[10px] px-3 text-[14px] font-bold text-navy-2 underline decoration-line underline-offset-4 dark:text-gold-2"
@@ -85,6 +70,7 @@ export function HomePage() {
                 كل مشاريعي
               </a>
             </div>
+            <p className="mt-4 text-[11px] text-muted">{PRODUCT_COPY.demoNote}</p>
 
             <input
               ref={fileInput}
@@ -108,6 +94,18 @@ export function HomePage() {
                 e.target.value = "";
               }}
             />
+            </div>
+            <div className="relative min-h-[280px] overflow-hidden rounded-[14px] border border-line bg-[#f4f6f2] p-4 dark:border-white/10 dark:bg-[#252627]">
+              <div className="absolute inset-x-4 top-4 flex items-center justify-between border-b border-[#d7e0d7] pb-3 dark:border-white/10"><span className="text-[10px] font-bold text-green">DEMO WORKSPACE</span><span className="h-2 w-20 rounded-full bg-[#c6a05a]/60" /></div>
+              <div className="absolute right-8 top-20 h-36 w-[48%] bg-white shadow-[0_14px_30px_rgba(15,23,42,.12)] dark:bg-[#f8faf8]"><span className="absolute inset-x-5 top-6 h-3 w-2/3 bg-[#0c3d2c]" /><span className="absolute inset-x-5 top-14 h-14 border border-[#d8e0db]" /><span className="absolute bottom-5 right-5 h-3 w-1/3 bg-[#c6a05a]/70" /></div>
+              <div className="absolute bottom-8 left-8 grid gap-2 text-right"><span className="text-[11px] font-extrabold text-[#0c3d2c] dark:text-[#d7d8d9]">محرر التقارير</span><span className="max-w-[180px] text-[12px] leading-6 text-muted">قوالب، طبقات، مؤشرات، وتصدير في مساحة عمل واحدة.</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section className="border-b border-line bg-[#f6f8f5] dark:border-white/10 dark:bg-[#1c2021]">
+          <div className="mx-auto grid w-full max-w-6xl gap-4 px-4 py-8 sm:grid-cols-3 sm:px-6">
+            {[[BriefcaseBusiness, "للفرق المؤسسية", "إنتاج منظم للمخرجات المتكررة."], [Workflow, "لسير العمل الحقيقي", "من البيانات والهيكل إلى ملف جاهز للعرض."], [ShieldCheck, "لـDemo آمن", "بيانات محلية تجريبية ومسار واضح للنسخة التجارية."]].map(([Icon, title, desc]) => <div key={String(title)} className="flex gap-3"><Icon className="mt-0.5 size-5 shrink-0 text-green" /><div><strong className="block text-[13px] font-extrabold">{String(title)}</strong><span className="mt-1 block text-[12px] leading-5 text-muted">{String(desc)}</span></div></div>)}
           </div>
         </section>
 
@@ -192,9 +190,6 @@ export function HomePage() {
                 عن المنصة
               </a>
             </div>
-            <p className="mt-6 text-[12px] text-muted">
-              من تطوير {BRAND.owner} — Developed by {BRAND.developer}
-            </p>
           </div>
         </section>
       </main>

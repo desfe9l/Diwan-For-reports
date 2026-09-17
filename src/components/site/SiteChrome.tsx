@@ -51,7 +51,7 @@ export function SiteHeader({ current }: { current: string }) {
             href="/editor"
             className="inline-flex h-9 items-center rounded-[8px] bg-navy px-3 text-[12px] font-extrabold text-white"
           >
-            افتح المحرر
+            جرّب المحرر
           </a>
           <button
             type="button"

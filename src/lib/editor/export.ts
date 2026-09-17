@@ -123,7 +123,9 @@ export async function capturePages(
       scale,
       useCORS: true,
       allowTaint: true,
-      backgroundColor: "#ffffff",
+      // The page itself owns its background (including transparent pages). Do
+      // not let html2canvas replace it with a white export backdrop.
+      backgroundColor: null,
       logging: false,
       width: node.offsetWidth,
       height: node.offsetHeight,
@@ -349,6 +351,9 @@ function elHtml(el: CanvasEl): string {
   const body = (fallback = "") => formatMultiline(text.text || fallback);
 
   if (el.hidden) return "";
+  if (el.type === "group") {
+    return wrap((el.children || []).slice().sort((a, b) => num(a.z, 0) - num(b.z, 0)).map(elHtml).join(""));
+  }
   if (el.type === "text") {
     return wrap(
       `<div class="text" style="font-family:${cssFont(s.fontFamily)};font-size:${num(text.fontSize, 14, 4, 400)}pt;color:${cssColor(s.color, "#172033")};font-weight:${num(s.fontWeight, 600, 100, 900)};text-align:${cssKeyword(s.textAlign, TEXT_ALIGN, "right")};line-height:${num(s.lineHeight, 1.45, 0.5, 5)};font-style:${cssKeyword(s.fontStyle, FONT_STYLE, "normal")};letter-spacing:${num(s.letterSpacing, 0, -10, 50)}mm;direction:rtl;${verticalCss}">${body()}</div>`,
@@ -484,8 +489,8 @@ export function buildStandaloneHtml(project: Project, pages: Page[]) {
   @page { size: ${firstSize.w}mm ${firstSize.h}mm; margin: 0; }
   * { box-sizing: border-box; }
   body { margin: 0; background: #e8eaef; font-family: "Tajawal","Cairo",sans-serif; }
-  .page { position: relative; overflow: hidden; background: #fff; margin: 12mm auto; box-shadow: 0 18px 50px rgba(15,23,42,.16); page-break-after: always; }
-  .el { position: absolute; overflow: hidden; }
+  .page { position: relative; overflow: visible; background: #fff; margin: 12mm auto; box-shadow: 0 18px 50px rgba(15,23,42,.16); page-break-after: always; }
+  .el { position: absolute; overflow: visible; }
   .text, .box { width: 100%; height: 100%; white-space: pre-wrap; word-break: break-word; }
   img { display: block; }
   @media print {

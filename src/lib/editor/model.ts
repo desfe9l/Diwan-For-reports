@@ -184,6 +184,8 @@ export interface CanvasEl {
   z: number;
   locked?: boolean;
   hidden?: boolean;
+  /** Shared movement relationship; unlike a group, linked elements remain independent. */
+  linkId?: string;
   content?: string;
   src?: string;
   icon?: string;

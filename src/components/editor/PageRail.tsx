@@ -69,7 +69,7 @@ export function PageRail() {
   };
 
   return (
-    <div className="flex h-[132px] items-stretch gap-2 border-t border-line bg-white px-3 py-2 dark:border-white/10 dark:bg-[#161c26]">
+    <div className="editor-page-rail flex h-[132px] items-stretch gap-2 border-t px-3 py-2">
       <div className="flex flex-col justify-center gap-1">
         <button
           type="button"
