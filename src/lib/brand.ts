@@ -55,4 +55,5 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/templates", label: "القوالب" },
   { to: "/about", label: "عن المنصة" },
   { to: "/contact", label: "التواصل" },
+  { to: "/account", label: "حسابي" },
 ];
