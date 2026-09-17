@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export const DEFAULT_APP_NAME = "Grok App";
+export const DEFAULT_APP_NAME = "NASAQ | نَسَق";
 export const OG_SERVICE_URL_DEFAULT = "https://og.grok.me";
 export const OG_SITE_REL_PATH = "src/lib/og/site.json";
 
@@ -167,8 +167,8 @@ export function renderWebManifest(hostHeader) {
       start_url: "/",
       scope: "/",
       display: "standalone",
-      background_color: "#000000",
-      theme_color: "#000000",
+      background_color: "#006C35",
+      theme_color: "#006C35",
       icons: [
         {
           src: "/__grok/icon-180.png",
@@ -196,7 +196,7 @@ export function grokPwaHeadTags(appName = DEFAULT_APP_NAME) {
       "apple-mobile-web-app-status-bar-style",
       '<meta name="apple-mobile-web-app-status-bar-style" content="black">',
     ],
-    ["theme-color", '<meta name="theme-color" content="#000000">'],
+    ["theme-color", '<meta name="theme-color" content="#006C35">'],
   ];
 }
 

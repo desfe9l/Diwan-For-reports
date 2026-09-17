@@ -3,6 +3,8 @@
   "private": true,
   "sideEffects": false,
   "type": "module",
+  "description": "NASAQ | نَسَق — Professional Design & Report Editor / منصة التصميم والتحرير المؤسسي",
+  "author": "Faisal Alenezi",
   "overrides": {
     "nf3": "0.3.17"
   },

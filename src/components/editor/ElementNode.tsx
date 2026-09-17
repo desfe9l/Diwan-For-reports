@@ -285,7 +285,7 @@ function ElementContent({
                 cy={size / 2}
                 r={r}
                 fill="none"
-                stroke={s.fill || "#071d3d"}
+                stroke={s.fill || "#006c35"}
                 strokeWidth={thickness}
                 strokeLinecap="round"
                 strokeDasharray={`${(c * value) / 100} ${c}`}
@@ -332,7 +332,7 @@ function ElementContent({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "2mm" }}>
           {caption}
           {s.showValue !== false && (
-            <span style={{ color: s.fill || "#071d3d", flexShrink: 0 }}>{shown}</span>
+            <span style={{ color: s.fill || "#006c35", flexShrink: 0 }}>{shown}</span>
           )}
         </div>
         <div
@@ -344,7 +344,7 @@ function ElementContent({
             flexShrink: 0,
           }}
         >
-          <div style={{ width: `${value}%`, height: "100%", background: s.fill || "#071d3d" }} />
+          <div style={{ width: `${value}%`, height: "100%", background: s.fill || "#006c35" }} />
         </div>
       </div>
     );
@@ -373,7 +373,7 @@ function ElementContent({
     return (
       <ShapeGlyph
         style={s}
-        fill={s.fill || "#071d3d"}
+        fill={s.fill || "#006c35"}
         stroke={s.borderColor || "transparent"}
         borderWidthMm={Number(s.borderWidth) || 0}
         box={{ w: el.w, h: el.h }}
@@ -387,7 +387,7 @@ function ElementContent({
       <div className="flex h-full w-full items-center justify-center">
         <div
           style={{
-            background: s.color || "#c6a05a",
+            background: s.color || "#c9a86a",
             width: vertical ? `${s.stroke || 0.8}mm` : "100%",
             height: vertical ? "100%" : `${s.stroke || 0.8}mm`,
           }}
@@ -397,7 +397,7 @@ function ElementContent({
   }
 
   if (el.type === "divider") {
-    const c = s.color || "#c6a05a";
+    const c = s.color || "#c9a86a";
     return (
       <div className="flex h-full w-full items-center gap-1.5 px-1">
         <span className="h-px flex-1" style={{ background: c, height: `${s.stroke || 0.5}mm` }} />
@@ -444,7 +444,7 @@ function ElementContent({
   if (el.type === "icon") {
     const d = ICONS[el.icon || "star"] || ICONS.star;
     return (
-      <div className="grid h-full w-full place-items-center" style={{ color: s.color || "#c6a05a" }}>
+      <div className="grid h-full w-full place-items-center" style={{ color: s.color || "#c9a86a" }}>
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -467,8 +467,8 @@ function ElementContent({
         className="grid h-full w-full place-items-center text-center"
         style={{
           borderRadius: "999px",
-          border: `0.7mm double ${s.borderColor || s.color || "#c6a05a"}`,
-          color: s.color || "#c6a05a",
+          border: `0.7mm double ${s.borderColor || s.color || "#c9a86a"}`,
+          color: s.color || "#c9a86a",
           fontFamily: cssFont(s.fontFamily || "Amiri"),
           fontWeight: 700,
           fontSize: `${prepared.fontSize}pt`,
@@ -512,7 +512,7 @@ function ElementContent({
                     style={{
                       border: `${s.borderWidth ?? 0.3}mm solid ${s.borderColor || "#bfc7d6"}`,
                       padding: "1.6mm",
-                      background: ri === 0 ? s.headerBg || "#071d3d" : zebra || s.tableBg || "#fff",
+                      background: ri === 0 ? s.headerBg || "#006c35" : zebra || s.tableBg || "#fff",
                       color: ri === 0 ? s.headerColor || "#fff" : s.color || "#172033",
                       fontWeight: ri === 0 ? 800 : 500,
                       textAlign: s.cellAlign || "right",

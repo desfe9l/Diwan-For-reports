@@ -53,9 +53,12 @@ export function HomePage() {
             <h1 className="max-w-3xl text-[32px] font-extrabold leading-[1.3] sm:text-[44px]">
               صمّم تقاريرك باحتراف
             </h1>
+            <p className="mt-3 text-[15px] font-bold text-navy-2 dark:text-gold-2">
+              {BRAND.lockup} — {BRAND.platformEn}
+            </p>
             <p className="mt-4 max-w-2xl text-[15px] leading-8 text-muted sm:text-[16px]">
-              منصة {BRAND.owner} لتصميم وإخراج {BRAND.tagline} — محرر صفحات متعددة بنصوص وجداول وصور
-              وشعارات ومؤشرات، مع تصدير PDF عالي الجودة ومقاسات دقيقة للمطبوعات.
+              {BRAND.description} محرر صفحات متعددة بنصوص وجداول وصور وشعارات ومؤشرات، مع
+              تصدير PDF عالي الجودة ومقاسات دقيقة للمطبوعات.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
@@ -189,6 +192,9 @@ export function HomePage() {
                 عن المنصة
               </a>
             </div>
+            <p className="mt-6 text-[12px] text-muted">
+              من تطوير {BRAND.owner} — Developed by {BRAND.developer}
+            </p>
           </div>
         </section>
       </main>

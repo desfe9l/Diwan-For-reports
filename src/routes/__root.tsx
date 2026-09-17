@@ -4,8 +4,8 @@ import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { BRAND } from "@/lib/brand";
 import appCss from "../styles.css?url";
 
-const APP_NAME = `${BRAND.owner} — ${BRAND.platform}`;
-const DESCRIPTION = `${BRAND.owner}: ${BRAND.tagline}. محرر تقارير عربي بمقاسات A4 وA3 و16:9، مع تصدير PDF وPNG وJPG وWord وPowerPoint.`;
+const APP_NAME = `${BRAND.lockup} — ${BRAND.platformEn}`;
+const DESCRIPTION = `${BRAND.name} — ${BRAND.platformEn}. ${BRAND.nameAr}: ${BRAND.platform}. محرر تقارير عربي بمقاسات A4 وA3 و16:9، مع تصدير PDF وPNG وJPG وWord وPowerPoint.`;
 
 export const Route = createRootRoute({
   head: () => ({
@@ -13,12 +13,14 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: APP_NAME },
-      { name: "theme-color", content: "#071d3d" },
+      { name: "theme-color", content: "#006C35" },
       { name: "description", content: DESCRIPTION },
-      { name: "author", content: BRAND.owner },
+      { name: "author", content: BRAND.developer },
       { property: "og:title", content: APP_NAME },
       { property: "og:description", content: DESCRIPTION },
+      { property: "og:site_name", content: BRAND.lockup },
       { property: "og:locale", content: "ar_SA" },
+      { property: "og:locale:alternate", content: "en_US" },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },

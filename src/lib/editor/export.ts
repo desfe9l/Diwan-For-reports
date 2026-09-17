@@ -375,7 +375,7 @@ function elHtml(el: CanvasEl): string {
           <div style="position:relative;width:${size}mm;height:${size}mm;flex-shrink:0">
             <svg viewBox="0 0 ${size} ${size}" width="100%" height="100%">
               <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${cssColor(s.background, "#e8ecf3")}" stroke-width="${thickness}"/>
-              <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${cssColor(s.fill, "#071d3d")}" stroke-width="${thickness}" stroke-linecap="round" stroke-dasharray="${dash} ${circumference}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
+              <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${cssColor(s.fill, "#006c35")}" stroke-width="${thickness}" stroke-linecap="round" stroke-dasharray="${dash} ${circumference}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
             </svg>
             <div style="position:absolute;inset:0;display:grid;place-items:center;font-size:${num(text.fontSize, 11, 4, 400)}pt;font-weight:${num(s.fontWeight, 700, 100, 900)}">${shown}</div>
           </div>
@@ -387,7 +387,7 @@ function elHtml(el: CanvasEl): string {
     return wrap(
       `<div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;gap:1.4mm;direction:rtl;overflow:hidden;font-family:${cssFont(s.fontFamily)}">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:2mm;font-size:${num(text.fontSize, 10, 4, 400)}pt;font-weight:${num(s.fontWeight, 700, 100, 900)};color:${cssColor(s.color, "#172033")}"><span class="progress-caption" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${body()}</span>${valueHtml}</div>
-        <div style="height:${Math.max(2, num(el.h, 16, 0, 1e4) * 0.3)}mm;background:${cssColor(s.background, "#e8ecf3")};border-radius:${num(s.radius, 3, 0, 500)}mm;overflow:hidden;flex-shrink:0"><div style="width:${value}%;height:100%;background:${cssColor(s.fill, "#071d3d")}"></div></div>
+        <div style="height:${Math.max(2, num(el.h, 16, 0, 1e4) * 0.3)}mm;background:${cssColor(s.background, "#e8ecf3")};border-radius:${num(s.radius, 3, 0, 500)}mm;overflow:hidden;flex-shrink:0"><div style="width:${value}%;height:100%;background:${cssColor(s.fill, "#006c35")}"></div></div>
       </div>`,
     );
   }
@@ -395,7 +395,7 @@ function elHtml(el: CanvasEl): string {
     const borderWidth = num(s.borderWidth, 0, 0, 50);
     return wrap(
       shapeSvgMarkup(s.shapeId || s.shape, {
-        fill: cssColor(s.fill, "#071d3d"),
+        fill: cssColor(s.fill, "#006c35"),
         stroke: cssColor(s.borderColor, "transparent"),
         strokeUnits: strokeToUnits(borderWidth, { w: num(el.w, 40, 1, 1e4), h: num(el.h, 20, 1, 1e4) }),
       }),
@@ -405,13 +405,13 @@ function elHtml(el: CanvasEl): string {
     const stroke = num(s.stroke, 0.8, 0.05, 50);
     const vertical = num(el.h, 0) > num(el.w, 0);
     return wrap(
-      `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center"><div style="${vertical ? `width:${stroke}mm;height:100%` : `height:${stroke}mm;width:100%`};background:${cssColor(s.color, "#c6a05a")}"></div></div>`,
+      `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center"><div style="${vertical ? `width:${stroke}mm;height:100%` : `height:${stroke}mm;width:100%`};background:${cssColor(s.color, "#c9a86a")}"></div></div>`,
     );
   }
   if (el.type === "divider") {
     const stroke = num(s.stroke, 0.5, 0.05, 50);
     return wrap(
-      `<div style="width:100%;height:100%;display:flex;align-items:center;gap:6px"><span style="flex:1;height:${stroke}mm;background:${cssColor(s.color, "#c6a05a")}"></span><span style="width:4mm;height:4mm;border:0.45mm solid ${cssColor(s.color, "#c6a05a")};transform:rotate(45deg)"></span><span style="flex:1;height:${stroke}mm;background:${cssColor(s.color, "#c6a05a")}"></span></div>`,
+      `<div style="width:100%;height:100%;display:flex;align-items:center;gap:6px"><span style="flex:1;height:${stroke}mm;background:${cssColor(s.color, "#c9a86a")}"></span><span style="width:4mm;height:4mm;border:0.45mm solid ${cssColor(s.color, "#c9a86a")};transform:rotate(45deg)"></span><span style="flex:1;height:${stroke}mm;background:${cssColor(s.color, "#c9a86a")}"></span></div>`,
     );
   }
   if (el.type === "image" || el.type === "logo" || el.type === "qr") {
@@ -422,12 +422,12 @@ function elHtml(el: CanvasEl): string {
   }
   if (el.type === "icon") {
     return wrap(
-      `<div style="width:100%;height:100%;color:${cssColor(s.color, "#c6a05a")};display:grid;place-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${num(s.stroke, 1.8, 0.1, 20)}" stroke-linecap="round" stroke-linejoin="round" style="width:100%;height:100%"><path d="M12 3 14.8 9l6.2.7-4.6 4.2 1.2 6.1L12 16.8 6.4 20l1.2-6.1L3 9.7 9.2 9 12 3Z"/></svg></div>`,
+      `<div style="width:100%;height:100%;color:${cssColor(s.color, "#c9a86a")};display:grid;place-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${num(s.stroke, 1.8, 0.1, 20)}" stroke-linecap="round" stroke-linejoin="round" style="width:100%;height:100%"><path d="M12 3 14.8 9l6.2.7-4.6 4.2 1.2 6.1L12 16.8 6.4 20l1.2-6.1L3 9.7 9.2 9 12 3Z"/></svg></div>`,
     );
   }
   if (el.type === "stamp") {
     return wrap(
-      `<div style="width:100%;height:100%;border-radius:999px;border:0.7mm double ${cssColor(s.borderColor || s.color, "#c6a05a")};color:${cssColor(s.color, "#c6a05a")};display:grid;place-items:center;text-align:center;font-family:${cssFont(s.fontFamily || "Amiri")};font-weight:700;font-size:${num(text.fontSize, 12, 4, 400)}pt;transform:rotate(-12deg);overflow:hidden">${body("معتمد")}</div>`,
+      `<div style="width:100%;height:100%;border-radius:999px;border:0.7mm double ${cssColor(s.borderColor || s.color, "#c9a86a")};color:${cssColor(s.color, "#c9a86a")};display:grid;place-items:center;text-align:center;font-family:${cssFont(s.fontFamily || "Amiri")};font-weight:700;font-size:${num(text.fontSize, 12, 4, 400)}pt;transform:rotate(-12deg);overflow:hidden">${body("معتمد")}</div>`,
     );
   }
   if (el.type === "table") {
@@ -443,7 +443,7 @@ function elHtml(el: CanvasEl): string {
             const cellText = applyNumerals(c, s.numerals);
             const rowBg =
               ri === 0
-                ? `background:${cssColor(s.headerBg, "#071d3d")};color:${cssColor(s.headerColor, "#fff")}`
+                ? `background:${cssColor(s.headerBg, "#006c35")};color:${cssColor(s.headerColor, "#fff")}`
                 : `background:${ri % 2 === 0 && stripe ? stripe : cssColor(s.tableBg, "#fff")};color:${cssColor(s.color, "#172033")}`;
             return `<${tag} style="border:${num(s.borderWidth, 0.3, 0, 50)}mm solid ${cssColor(s.borderColor, "#bfc7d6")};padding:2mm;text-align:${cssKeyword(s.cellAlign, TEXT_ALIGN, "right")};${rowBg}">${esc(cellText)}</${tag}>`;
           })
@@ -476,7 +476,8 @@ export function buildStandaloneHtml(project: Project, pages: Page[]) {
 <head>
 <meta charset="utf-8"/>
 <title>${esc(project.name)}</title>
-<meta name="generator" content="${esc(BRAND.owner)} — ${esc(BRAND.platform)}"/>
+<meta name="generator" content="${esc(BRAND.lockup)} — ${esc(BRAND.platformEn)}"/>
+<meta name="author" content="${esc(BRAND.developer)}"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@400;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Noto+Kufi+Arabic:wght@400;700&family=Noto+Naskh+Arabic:wght@400;700&family=Noto+Sans+Arabic:wght@400;700&family=Reem+Kufi:wght@400;700&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet"/>
 <style>

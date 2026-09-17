@@ -148,7 +148,7 @@ export function LeftPanel({ onUpload }: { onUpload: (kind: "image" | "logo" | "f
         const src = await QRCode.toDataURL(text, {
           margin: 1,
           width: 512,
-          color: { dark: "#071d3d", light: "#ffffff" },
+          color: { dark: "#006c35", light: "#ffffff" },
         });
         addElement("qr", { content: text, src });
       } catch {

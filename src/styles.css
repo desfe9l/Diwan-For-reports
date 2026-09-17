@@ -6,22 +6,27 @@
 /*
  * Design tokens.
  *
- * Palette is deliberately restrained: white paper, neutral greys, deep navy and
- * deep green as the two brand anchors, with gold used only as a thin accent.
- * No gradient-led surfaces, no decorative elements without a function.
+ * Palette is deliberately restrained: white paper, neutral greys, and
+ * institutional emerald as the brand anchor, with muted gold used only as a
+ * thin accent. No gradient-led surfaces, no decorative elements without a function.
  */
 @theme {
   --font-sans: "Tajawal", "Cairo", "IBM Plex Sans Arabic", "Noto Sans Arabic", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Cairo", "Tajawal", sans-serif;
   --font-serif-ar: "Amiri", "Noto Naskh Arabic", serif;
 
-  --color-navy: #071d3d;
-  --color-navy-2: #102d57;
-  --color-navy-3: #1a3d6d;
+  /*
+   * `navy` keeps its name because it is the historical token for the primary
+   * surface colour and is referenced across the whole editor; it now carries the
+   * institutional emerald that NASAQ brands with.
+   */
+  --color-navy: #006c35;
+  --color-navy-2: #00874a;
+  --color-navy-3: #0a9c59;
   --color-green: #0c3d2c;
   --color-green-2: #145c42;
-  --color-gold: #c6a05a;
-  --color-gold-2: #e8c978;
+  --color-gold: #c9a86a;
+  --color-gold-2: #e0c894;
   --color-ink: #172033;
   --color-paper: #f2f4f8;
   --color-surface: #ffffff;

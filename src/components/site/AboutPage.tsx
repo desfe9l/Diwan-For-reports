@@ -15,11 +15,15 @@ export function AboutPage() {
       <SiteHeader current="/about" />
 
       <main className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
-        <h1 className="text-[26px] font-extrabold">عن {BRAND.owner}</h1>
+        <h1 className="text-[26px] font-extrabold">عن {BRAND.lockup}</h1>
+        <p className="mt-3 text-[14px] font-bold text-navy-2 dark:text-gold-2">
+          {BRAND.platformEn}
+        </p>
         <p className="mt-4 text-[15px] leading-8 text-muted">
-          هذه المنصة أداة عمل شخصية طوّرها {BRAND.owner} لتصميم وإخراج التقارير والمستندات والتصاميم
-          الرسمية. الفكرة بسيطة: بدلاً من إعادة بناء التقرير في كل مرة، تبدأ من صفحة أو قالب جاهز، تعدّل
-          النصوص والأرقام والجداول والصور، ثم تصدّر الملف بجودة طباعة مناسبة للتسليم الرسمي.
+          {BRAND.name} منصة {BRAND.platform} — طوّرها {BRAND.owner} لتصميم وإخراج التقارير
+          والمستندات والتصاميم الرسمية. الفكرة بسيطة: بدلاً من إعادة بناء التقرير في كل مرة، تبدأ
+          من صفحة أو قالب جاهز، تعدّل النصوص والأرقام والجداول والصور، ثم تصدّر الملف بجودة طباعة
+          مناسبة للتسليم الرسمي.
         </p>
 
         <section className="mt-8 grid gap-4 rounded-[12px] border border-line bg-white p-6 sm:grid-cols-2 dark:border-white/10 dark:bg-white/5">
@@ -29,6 +33,26 @@ export function AboutPage() {
           <Fact title="التصدير" body="PDF وPNG وJPG وPowerPoint وWord وHTML مع نسخة مشروع JSON." />
           <Fact title="الخصوصية" body="الملفات تُحفظ في متصفح الجهاز ولا تُرفع إلى أي سيرفر." />
           <Fact title="الملاءمة" body="مصمّمة للعمل على الشاشات الكبيرة أولاً، وتعمل على الأجهزة اللوحية." />
+        </section>
+
+        <section className="mt-8 rounded-[12px] border border-line bg-white p-6 dark:border-white/10 dark:bg-white/5">
+          <h2 className="text-[16px] font-extrabold">التطوير</h2>
+          <dl className="mt-3 grid gap-2 text-[14px]">
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-muted">الاسم</dt>
+              <dd className="font-bold">من تطوير {BRAND.owner}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-muted">English</dt>
+              <dd className="font-bold" dir="ltr">
+                Developed by {BRAND.developer}
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-4 text-[12px] leading-6 text-muted">
+            {BRAND.name} هو اسم المنصة، ولا يُعد اسم المطوّر جزءاً منه. حقوق المنتج والتطوير
+            محفوظة لـ {BRAND.owner}.
+          </p>
         </section>
 
         <section className="mt-8 rounded-[12px] border border-line bg-white p-6 dark:border-white/10 dark:bg-white/5">

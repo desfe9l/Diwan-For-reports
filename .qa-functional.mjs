@@ -32,7 +32,7 @@ page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
 await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
 
 // --- Home page ---
-check("home: brand name visible", await page.getByText("فيصل العنزي").first().isVisible());
+check("home: brand name visible", await page.getByText("NASAQ | نَسَق").first().isVisible());
 check("home: hero heading", await page.getByText("صمّم تقاريرك باحتراف").isVisible());
 check("home: phone in footer/header", (await page.getByText("0552017111").count()) > 0);
 await page.screenshot({ path: `${OUT}/qa-01-home.png`, fullPage: false });
@@ -145,10 +145,10 @@ const storageKeys = await page.evaluate(async () => {
   const dbs = (await indexedDB.databases?.()) ?? [];
   return dbs.map((d) => d.name);
 });
-check("storage: IndexedDB created", storageKeys.includes("faisal-reports"), storageKeys.join(","));
+check("storage: IndexedDB created", storageKeys.includes("nasaq-reports"), storageKeys.join(","));
 
 const persisted = await page.evaluate(async () => {
-  const open = indexedDB.open("faisal-reports");
+  const open = indexedDB.open("nasaq-reports");
   const db = await new Promise((res, rej) => {
     open.onsuccess = () => res(open.result);
     open.onerror = () => rej(open.error);

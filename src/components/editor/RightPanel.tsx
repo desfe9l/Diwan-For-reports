@@ -749,7 +749,7 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
                   <Field label="لون الإطار">
                     <input
                       type="color"
-                      value={toColor(el.style.borderColor, "#c6a05a")}
+                      value={toColor(el.style.borderColor, "#c9a86a")}
                       onChange={(e) => updateStyle(el.id, { borderColor: e.target.value }, true)}
                       onBlur={() => updateStyle(el.id, { borderColor: el.style.borderColor })}
                     />
