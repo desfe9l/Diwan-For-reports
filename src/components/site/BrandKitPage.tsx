@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, RotateCcw, Save, ShieldCheck } from "lucide-react";
+import { RotateCcw, Save, ShieldCheck } from "lucide-react";
 import { SiteFooter, SiteHeader } from "@/components/site/SiteChrome";
 import { DEFAULT_BRAND_KIT, type BrandKit } from "@/lib/product/product";
 import { readBrandKit, resetBrandKit, saveBrandKit } from "@/lib/product/brand-kit";
