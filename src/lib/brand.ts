@@ -7,21 +7,21 @@
  */
 
 export const BRAND = {
-  owner: "فيصل سعود العنزي",
-  developer: "فيصل سعود العنزي",
-  platform: "نَسَق",
-  platformEn: "NASAQ",
-  name: "نَسَق",
-  nameAr: "نَسَق",
+  owner: "فيصل المضياني",
+  developer: "فيصل المضياني",
+  platform: "نسق",
+  platformEn: "Nasaq",
+  name: "نسق",
+  nameAr: "نسق",
   tagline: "منصة التصميم والتحرير المؤسسي",
-  short: "نَسَق",
-  lockup: "نَسَق | NASAQ",
+  short: "نسق",
+  lockup: "نسق",
   description:
-    "منصة احترافية لتصميم التقارير والمستندات والعروض المؤسسية بصيغ قابلة للتحرير — من تطوير فيصل سعود العنزي.",
+    "منصة احترافية لتصميم التقارير والمستندات والعروض المؤسسية بصيغ قابلة للتحرير — من تصميم وتطوير فيصل المضياني.",
 } as const;
 
 /** Local display form: what the owner hands out inside Saudi Arabia. */
-export const CONTACT_PHONE_DISPLAY = "0552017111";
+export const CONTACT_PHONE_DISPLAY = "+966 55 201 7111";
 
 /** International form used in tel: and wa.me links. */
 export const CONTACT_PHONE_INTL = "966552017111";
@@ -44,6 +44,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "الرئيسية" },
   { to: "/projects", label: "المشاريع" },
   { to: "/templates", label: "القوالب" },
+  { to: "/purchase", label: "النسخ والتراخيص" },
   { to: "/brand-kit", label: "الهوية" },
   { to: "/about", label: "عن المنصة" },
   { to: "/contact", label: "التواصل" },

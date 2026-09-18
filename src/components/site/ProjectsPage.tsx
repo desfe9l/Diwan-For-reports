@@ -41,8 +41,8 @@ export function ProjectsPage() {
   };
 
   const startNew = async () => {
-    await createProject("official");
-    window.location.assign("/editor");
+    const created = await createProject("blank");
+    if (created) window.location.assign("/editor");
   };
 
   return (
@@ -156,9 +156,7 @@ export function ProjectsPage() {
                   <button
                     key={pack.id}
                     type="button"
-                    onClick={() =>
-                      void createProject(pack.id).then(() => window.location.assign("/editor"))
-                    }
+                    onClick={() => window.location.assign(pack.id === "blank" ? "/demo" : "/purchase")}
                     className="rounded-[8px] border border-line px-3 py-2 text-[12px] font-bold dark:border-white/10"
                   >
                     {pack.title}

@@ -6,6 +6,7 @@ import { SIZE_PRESETS, THEMES, pageSize, type PackId } from "@/lib/editor/model"
 import { useEditor } from "@/lib/editor/store";
 import { SiteFooter, SiteHeader } from "@/components/site/SiteChrome";
 import { cn } from "@/lib/utils";
+import { canUseDemoPack } from "@/lib/product/product";
 import { useMemo } from "react";
 
 const SIZE_OPTIONS = SIZE_PRESETS.filter((s) => s.id !== "custom");
@@ -26,10 +27,16 @@ export function TemplatesPage() {
   );
 
   const startFrom = async (packId: string) => {
+    if (!canUseDemoPack(packId)) {
+      window.location.assign("/purchase");
+      return;
+    }
     const pack = PACKS.find((p) => p.id === packId);
-    await createProject(packId as PackId, theme);
-    toast.success(`تم إنشاء «${pack?.title || packId}»`);
-    window.location.assign("/editor");
+    const created = await createProject(packId as PackId, theme);
+    if (created) {
+      toast.success(`تم إنشاء «${pack?.title || packId}»`);
+      window.location.assign("/editor");
+    }
   };
 
   return (
@@ -70,7 +77,7 @@ export function TemplatesPage() {
                   className="mt-4 inline-flex h-10 items-center justify-center gap-1.5 rounded-[8px] bg-navy text-[12px] font-extrabold text-white"
                 >
                   <Plus className="size-3.5" />
-                  إنشاء مشروع من هذا القالب
+                  {canUseDemoPack(pack.id) ? "بدء العرض من هذا القالب" : "متاح في النسخة الكاملة"}
                 </button>
               </div>
             ))}

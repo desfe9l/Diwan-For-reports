@@ -51,6 +51,7 @@ import { detectDeviceFonts, type DetectedFont } from "./fonts";
 import { resolveTextBox } from "./text-render";
 import { safeImageSrc } from "./images";
 import { clamp, uid } from "@/lib/utils";
+import { canAddDemoPage, canCreateDemoProject, canUseDemoPack } from "@/lib/product/product";
 
 export type LeftTab = "elements" | "shapes" | "templates" | "theme" | "pages" | "fonts" | "settings";
 export type RightTab = "properties" | "layers";
@@ -156,7 +157,7 @@ interface EditorStore extends Project, Ui, History {
   registerFont: (family: string, note?: string) => void;
   hydrate: () => Promise<void>;
   refreshProjects: () => Promise<void>;
-  createProject: (pack: PackId, theme?: ThemeId) => Promise<void>;
+  createProject: (pack: PackId, theme?: ThemeId) => Promise<boolean>;
   openProject: (id: string) => Promise<void>;
   saveNow: () => Promise<void>;
   renameProject: (id: string, name: string) => Promise<void>;
@@ -579,6 +580,18 @@ export const useEditor = create<EditorStore>((set, get) => {
 
     createProject: async (pack, theme) => {
       const s = get();
+      if (!canUseDemoPack(pack)) {
+        toast.error("هذا القالب متاح ضمن النسخة الكاملة", {
+          description: "يمكنك استكشافه من صفحة القوالب وطلب النسخة المناسبة لجهتك.",
+        });
+        return false;
+      }
+      if (!canCreateDemoProject(s.projects.length)) {
+        toast.error("اكتملت مساحة العرض التجريبي", {
+          description: "يتضمن العرض مشروعاً واحداً. اطلب النسخة الكاملة لإنشاء مشاريع إضافية.",
+        });
+        return false;
+      }
       const project = createProject(pack, theme || (pack === "eid" ? "eid" : "official"), s.orgName);
       const saved = await saveProject(project);
       applyProject(saved, { zoom: 0.82 });
@@ -590,6 +603,7 @@ export const useEditor = create<EditorStore>((set, get) => {
       });
       await setSetting("activeProjectId", saved.id);
       await get().refreshProjects();
+      return true;
     },
 
     openProject: async (id) => {
@@ -1203,6 +1217,12 @@ export const useEditor = create<EditorStore>((set, get) => {
 
     addPage: (sizeId) => {
       const s = get();
+      if (!canAddDemoPage(s.pages.length)) {
+        toast.error("وصلت إلى حد صفحات العرض التجريبي", {
+          description: "يتاح حتى 3 صفحات في العرض. افتح النسخة الكاملة لمشاريع أطول.",
+        });
+        return;
+      }
       const preset = sizePreset(sizeId || s.defaultSize || "a4-portrait");
       const p: Page = {
         id: uid("page"),
@@ -1218,6 +1238,12 @@ export const useEditor = create<EditorStore>((set, get) => {
 
     addTemplatePage: (id) => {
       const s = get();
+      if (!canAddDemoPage(s.pages.length)) {
+        toast.error("وصلت إلى حد صفحات العرض التجريبي", {
+          description: "يتاح حتى 3 صفحات في العرض. افتح النسخة الكاملة لمشاريع أطول.",
+        });
+        return;
+      }
       const p = createTemplatePage(id, THEMES[s.theme], s.orgName);
       set({ pages: [...s.pages, p], activePageId: p.id, selectedId: null, previewAll: false });
       pushHistory();
@@ -1225,6 +1251,12 @@ export const useEditor = create<EditorStore>((set, get) => {
 
     duplicatePage: (id) => {
       const s = get();
+      if (!canAddDemoPage(s.pages.length)) {
+        toast.error("وصلت إلى حد صفحات العرض التجريبي", {
+          description: "يتاح حتى 3 صفحات في العرض. افتح النسخة الكاملة لمشاريع أطول.",
+        });
+        return;
+      }
       const targetId = id || s.activePageId;
       const page = s.pages.find((p) => p.id === targetId);
       if (!page) return;
