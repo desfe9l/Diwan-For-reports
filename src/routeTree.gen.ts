@@ -12,8 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as ContactRouteImport } from './routes/contact'
+import { Route as DemoRouteImport } from './routes/demo'
 import { Route as EditorRouteImport } from './routes/editor'
 import { Route as ProjectsRouteImport } from './routes/projects'
+import { Route as PurchaseRouteImport } from './routes/purchase'
 import { Route as TemplatesRouteImport } from './routes/templates'
 
 const IndexRoute = IndexRouteImport.update({
@@ -31,6 +33,11 @@ const ContactRoute = ContactRouteImport.update({
   path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DemoRoute = DemoRouteImport.update({
+  id: '/demo',
+  path: '/demo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EditorRoute = EditorRouteImport.update({
   id: '/editor',
   path: '/editor',
@@ -39,6 +46,11 @@ const EditorRoute = EditorRouteImport.update({
 const ProjectsRoute = ProjectsRouteImport.update({
   id: '/projects',
   path: '/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PurchaseRoute = PurchaseRouteImport.update({
+  id: '/purchase',
+  path: '/purchase',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TemplatesRoute = TemplatesRouteImport.update({
@@ -51,16 +63,20 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/contact': typeof ContactRoute
+  '/demo': typeof DemoRoute
   '/editor': typeof EditorRoute
   '/projects': typeof ProjectsRoute
+  '/purchase': typeof PurchaseRoute
   '/templates': typeof TemplatesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/contact': typeof ContactRoute
+  '/demo': typeof DemoRoute
   '/editor': typeof EditorRoute
   '/projects': typeof ProjectsRoute
+  '/purchase': typeof PurchaseRoute
   '/templates': typeof TemplatesRoute
 }
 export interface FileRoutesById {
@@ -68,23 +84,42 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/contact': typeof ContactRoute
+  '/demo': typeof DemoRoute
   '/editor': typeof EditorRoute
   '/projects': typeof ProjectsRoute
+  '/purchase': typeof PurchaseRoute
   '/templates': typeof TemplatesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/about' | '/contact' | '/editor' | '/projects' | '/templates'
+    | '/'
+    | '/about'
+    | '/contact'
+    | '/demo'
+    | '/editor'
+    | '/projects'
+    | '/purchase'
+    | '/templates'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/contact' | '/editor' | '/projects' | '/templates'
+  to:
+    | '/'
+    | '/about'
+    | '/contact'
+    | '/demo'
+    | '/editor'
+    | '/projects'
+    | '/purchase'
+    | '/templates'
   id:
     | '__root__'
     | '/'
     | '/about'
     | '/contact'
+    | '/demo'
     | '/editor'
     | '/projects'
+    | '/purchase'
     | '/templates'
   fileRoutesById: FileRoutesById
 }
@@ -92,8 +127,10 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   ContactRoute: typeof ContactRoute
+  DemoRoute: typeof DemoRoute
   EditorRoute: typeof EditorRoute
   ProjectsRoute: typeof ProjectsRoute
+  PurchaseRoute: typeof PurchaseRoute
   TemplatesRoute: typeof TemplatesRoute
 }
 
@@ -120,6 +157,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/demo': {
+      id: '/demo'
+      path: '/demo'
+      fullPath: '/demo'
+      preLoaderRoute: typeof DemoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/editor': {
       id: '/editor'
       path: '/editor'
@@ -132,6 +176,13 @@ declare module '@tanstack/react-router' {
       path: '/projects'
       fullPath: '/projects'
       preLoaderRoute: typeof ProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/purchase': {
+      id: '/purchase'
+      path: '/purchase'
+      fullPath: '/purchase'
+      preLoaderRoute: typeof PurchaseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/templates': {
@@ -148,8 +199,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   ContactRoute: ContactRoute,
+  DemoRoute: DemoRoute,
   EditorRoute: EditorRoute,
   ProjectsRoute: ProjectsRoute,
+  PurchaseRoute: PurchaseRoute,
   TemplatesRoute: TemplatesRoute,
 }
 export const routeTree = rootRouteImport

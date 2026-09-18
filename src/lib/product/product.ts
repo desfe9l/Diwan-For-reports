@@ -57,17 +57,37 @@ export const DEMO_LICENSE: LicenseRecord = {
   scope: "individual",
   status: "DEMO",
   entitlements: {
-    maxProjects: 3,
-    maxPagesPerProject: 12,
+    maxProjects: 1,
+    maxPagesPerProject: 3,
     premiumTemplates: false,
-    advancedExports: true,
-    brandKit: true,
+    advancedExports: false,
+    brandKit: false,
     organizationWorkspace: false,
     collaboration: false,
     dataImport: false,
   },
   source: "demo-local",
 };
+
+/** The public experience deliberately opens only a blank, three-page sample. */
+export const DEMO_ALLOWED_PACKS = ["blank"] as const;
+export const DEMO_ALLOWED_EXPORTS = ["pdf", "png", "jpg"] as const;
+
+export function canUseDemoPack(pack: string): boolean {
+  return (DEMO_ALLOWED_PACKS as readonly string[]).includes(pack);
+}
+
+export function canAddDemoPage(pageCount: number): boolean {
+  return pageCount < (DEMO_LICENSE.entitlements.maxPagesPerProject ?? Infinity);
+}
+
+export function canCreateDemoProject(projectCount: number): boolean {
+  return projectCount < (DEMO_LICENSE.entitlements.maxProjects ?? Infinity);
+}
+
+export function canUseDemoExport(format: string): boolean {
+  return (DEMO_ALLOWED_EXPORTS as readonly string[]).includes(format);
+}
 
 export const DEFAULT_BRAND_KIT: BrandKit = {
   organizationName: "",

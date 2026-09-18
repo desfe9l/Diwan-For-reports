@@ -48,10 +48,10 @@ export function SiteHeader({ current }: { current: string }) {
             </span>
           </a>
           <a
-            href="/editor"
+            href="/demo"
             className="inline-flex h-9 items-center rounded-[8px] bg-navy px-3 text-[12px] font-extrabold text-white"
           >
-            جرّب المحرر
+            العرض التجريبي
           </a>
           <button
             type="button"

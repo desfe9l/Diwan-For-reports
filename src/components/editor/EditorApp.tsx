@@ -27,6 +27,7 @@ import { ArrangeBar } from "./ArrangeBar";
 import { PageRail } from "./PageRail";
 import { ExportDialog } from "./ExportDialog";
 import { cn } from "@/lib/utils";
+import { BRAND } from "@/lib/brand";
 import { WorkspaceOverlays, WorkspaceStatusBar, type MenuPoint } from "./WorkspaceOverlays";
 
 /**
@@ -108,7 +109,7 @@ export function EditorApp() {
     return (
       <div className="grid h-full place-items-center bg-navy text-white">
         <div className="text-center">
-          <p className="text-[15px] font-extrabold text-gold-2">فيصل العنزي</p>
+          <p className="text-[15px] font-extrabold text-gold-2">{BRAND.developer}</p>
           <p className="mt-1 text-[12px] text-white/60">جارٍ تحضير مساحة العمل…</p>
         </div>
       </div>

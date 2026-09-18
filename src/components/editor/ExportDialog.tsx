@@ -15,6 +15,7 @@ import { capturePages, runExport, safeFileName, type CapturedPage, type ExportFo
 import { pageSize } from "@/lib/editor/model";
 import { useEditor } from "@/lib/editor/store";
 import { cn } from "@/lib/utils";
+import { canUseDemoExport } from "@/lib/product/product";
 
 const FORMATS: { id: ExportFormat; title: string; desc: string; icon: typeof FileDown }[] = [
   { id: "pdf", title: "PDF", desc: "طباعة وأرشفة رسمية", icon: FileDown },
@@ -54,8 +55,13 @@ export function ExportDialog() {
 
   const selected = scope === "all" ? pages : pages.filter((p) => p.id === activePageId);
   const needsRaster = RASTER_FORMATS.has(format) || (OFFICE_FORMATS.has(format) && !editableOffice);
+  const formatAllowed = canUseDemoExport(format);
 
   const run = async () => {
+    if (!formatAllowed) {
+      setError("هذا النوع من التصدير متاح في النسخة الكاملة. يمكنك طلب الترخيص المناسب من صفحة النسخ والتراخيص.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -167,6 +173,7 @@ export function ExportDialog() {
                 <span className={cn("text-[11px] leading-4", format === f.id ? "text-white/70" : "text-muted")}>
                   {f.desc}
                 </span>
+                {!canUseDemoExport(f.id) && <span className="mt-1 block text-[10px] font-bold text-gold-2">النسخة الكاملة</span>}
               </button>
             );
           })}
@@ -252,7 +259,7 @@ export function ExportDialog() {
         <div className="mt-5 flex gap-2">
           <button
             type="button"
-            disabled={busy || previewBusy}
+            disabled={busy || previewBusy || !formatAllowed}
             onClick={() => void preview()}
             className="inline-flex h-11 items-center justify-center gap-1.5 rounded-[10px] border border-line px-4 text-[13px] font-bold disabled:opacity-40 dark:border-white/10"
           >
@@ -261,7 +268,7 @@ export function ExportDialog() {
           </button>
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || !formatAllowed}
             onClick={() => void run()}
             className="h-11 flex-1 rounded-[10px] bg-navy text-[14px] font-extrabold text-white disabled:opacity-50"
           >

@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { ArrowLeft, BriefcaseBusiness, FileText, LayoutTemplate, Table2, FileDown, Palette, ShieldCheck, Workflow } from "lucide-react";
 import { toast } from "sonner";
 import { PACKS } from "@/lib/editor/templates";
-import { type PackId } from "@/lib/editor/model";
 import { useEditor } from "@/lib/editor/store";
 import { SiteFooter, SiteHeader } from "@/components/site/SiteChrome";
 import { ProjectCard } from "@/components/site/ProjectCard";
@@ -16,7 +15,6 @@ const HIGHLIGHTS: { icon: typeof FileText; title: string; desc: string }[] = [
 ];
 
 export function HomePage() {
-  const createProject = useEditor((s) => s.createProject);
   const importProject = useEditor((s) => s.importProject);
   const projects = useEditor((s) => s.projects);
   const projectsLoading = useEditor((s) => s.projectsLoading);
@@ -29,11 +27,6 @@ export function HomePage() {
   }, [hydrate]);
 
   const recent = projects.slice(0, 3);
-
-  const start = async (pack: PackId) => {
-    await createProject(pack);
-    window.location.assign("/editor");
-  };
 
   const openEditor = async (id: string) => {
     await openProject(id);
@@ -55,13 +48,13 @@ export function HomePage() {
             <div className="mt-8 flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={() => void start("official")}
+                onClick={() => window.location.assign("/demo")}
                 className="inline-flex h-12 items-center gap-2 rounded-[10px] bg-navy px-5 text-[14px] font-extrabold text-white"
               >
                 {PRODUCT_COPY.hero.primary}
                 <ArrowLeft className="size-4" />
               </button>
-              <a href="/contact?request=institutional" className="inline-flex h-12 items-center gap-2 rounded-[10px] border border-line px-5 text-[14px] font-bold dark:border-white/10">{PRODUCT_COPY.hero.secondary}</a>
+              <a href="/purchase" className="inline-flex h-12 items-center gap-2 rounded-[10px] border border-line px-5 text-[14px] font-bold dark:border-white/10">{PRODUCT_COPY.hero.secondary}</a>
               <a
                 href="/projects"
                 className="inline-flex h-12 items-center rounded-[10px] px-3 text-[14px] font-bold text-navy-2 underline decoration-line underline-offset-4 dark:text-gold-2"
@@ -95,7 +88,7 @@ export function HomePage() {
             />
             </div>
             <div className="relative min-h-[280px] overflow-hidden rounded-[14px] border border-line bg-[#f4f6f2] p-4 dark:border-white/10 dark:bg-[#252627]">
-              <div className="absolute inset-x-4 top-4 flex items-center justify-between border-b border-[#d7e0d7] pb-3 dark:border-white/10"><span className="text-[10px] font-bold text-green">DEMO WORKSPACE</span><span className="h-2 w-20 rounded-full bg-[#c6a05a]/60" /></div>
+              <div className="absolute inset-x-4 top-4 flex items-center justify-between border-b border-[#d7e0d7] pb-3 dark:border-white/10"><span className="text-[10px] font-bold text-green">مساحة العرض التجريبي</span><span className="h-2 w-20 rounded-full bg-[#c6a05a]/60" /></div>
               <div className="absolute right-8 top-20 h-36 w-[48%] bg-white shadow-[0_14px_30px_rgba(15,23,42,.12)] dark:bg-[#f8faf8]"><span className="absolute inset-x-5 top-6 h-3 w-2/3 bg-[#0c3d2c]" /><span className="absolute inset-x-5 top-14 h-14 border border-[#d8e0db]" /><span className="absolute bottom-5 right-5 h-3 w-1/3 bg-[#c6a05a]/70" /></div>
               <div className="absolute bottom-8 left-8 grid gap-2 text-right"><span className="text-[11px] font-extrabold text-[#0c3d2c] dark:text-[#d7d8d9]">محرر التقارير</span><span className="max-w-[180px] text-[12px] leading-6 text-muted">قوالب، طبقات، مؤشرات، وتصدير في مساحة عمل واحدة.</span></div>
             </div>
@@ -142,7 +135,7 @@ export function HomePage() {
               <button
                 key={pack.id}
                 type="button"
-                onClick={() => void start(pack.id as PackId)}
+                onClick={() => window.location.assign(pack.id === "blank" ? "/demo" : "/purchase")}
                 className="rounded-[12px] border border-line bg-white p-5 text-right transition hover:border-navy-2 dark:border-white/10 dark:bg-white/5"
               >
                 <div className="mb-4 flex items-center justify-between">
@@ -153,6 +146,7 @@ export function HomePage() {
                 </div>
                 <strong className="block text-[15px] font-extrabold">{pack.title}</strong>
                 <span className="mt-1 block text-[12px] leading-6 text-muted">{pack.desc}</span>
+                <span className="mt-3 inline-flex text-[11px] font-extrabold text-navy-2 dark:text-gold-2">{pack.id === "blank" ? "فتح العرض" : "متاح في النسخة الكاملة"}</span>
               </button>
             ))}
           </div>
