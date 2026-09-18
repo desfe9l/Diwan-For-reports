@@ -9,13 +9,13 @@
 export const BRAND = {
   owner: "فيصل المضياني",
   developer: "فيصل المضياني",
-  platform: "نَسَق",
-  platformEn: "NASAQ",
-  name: "نَسَق",
-  nameAr: "نَسَق",
+  platform: "نسق",
+  platformEn: "Nasaq",
+  name: "نسق",
+  nameAr: "نسق",
   tagline: "منصة التصميم والتحرير المؤسسي",
-  short: "نَسَق",
-  lockup: "نَسَق | NASAQ",
+  short: "نسق",
+  lockup: "نسق",
   description:
     "منصة احترافية لتصميم التقارير والمستندات والعروض المؤسسية بصيغ قابلة للتحرير — من تصميم وتطوير فيصل المضياني.",
 } as const;

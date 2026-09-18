@@ -21,7 +21,7 @@ export function SiteHeader({ current }: { current: string }) {
           </span>
         </a>
 
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-1 lg:flex">
           {NAV_ITEMS.map((item) => (
             <a
               key={item.to}
@@ -58,7 +58,7 @@ export function SiteHeader({ current }: { current: string }) {
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
             aria-label="القائمة"
-            className="grid size-9 place-items-center rounded-[8px] border border-line md:hidden dark:border-white/10"
+            className="grid size-9 place-items-center rounded-[8px] border border-line lg:hidden dark:border-white/10"
           >
             {open ? <X className="size-4" /> : <Menu className="size-4" />}
           </button>
@@ -66,7 +66,7 @@ export function SiteHeader({ current }: { current: string }) {
       </div>
 
       {open && (
-        <nav className="border-t border-line px-4 pb-3 md:hidden dark:border-white/10">
+        <nav className="border-t border-line px-4 pb-3 lg:hidden dark:border-white/10">
           {NAV_ITEMS.map((item) => (
             <a
               key={item.to}
@@ -134,11 +134,6 @@ export function SiteFooter() {
 
 function Mark() {
   return (
-    <span className="grid size-9 shrink-0 place-items-center rounded-[9px] bg-navy">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <rect x="4.5" y="3" width="13" height="18" rx="1.6" stroke="#e0c894" strokeWidth="1.6" />
-        <path d="M8 8.5h6M8 12.5h6M8 16.5h3.5" stroke="#e0c894" strokeWidth="1.6" strokeLinecap="round" />
-      </svg>
-    </span>
+    <img src="/nasaq-mark.svg" alt="" aria-hidden className="size-9 shrink-0" />
   );
 }

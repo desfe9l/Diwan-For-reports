@@ -4,8 +4,8 @@ import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { BRAND } from "@/lib/brand";
 import appCss from "../styles.css?url";
 
-const APP_NAME = `${BRAND.lockup} — ${BRAND.platformEn}`;
-const DESCRIPTION = `${BRAND.name} — ${BRAND.platformEn}. ${BRAND.nameAr}: ${BRAND.platform}. محرر تقارير عربي بمقاسات A4 وA3 و16:9، مع تصدير PDF وPNG وJPG وWord وPowerPoint.`;
+const APP_NAME = BRAND.name;
+const DESCRIPTION = "نسق منصة عربية لتصميم وتحرير التقارير والمستندات والعروض، مع القوالب وإدارة الصفحات والتصدير.";
 
 export const Route = createRootRoute({
   head: () => ({
