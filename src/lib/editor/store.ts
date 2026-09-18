@@ -1023,7 +1023,7 @@ export const useEditor = create<EditorStore>((set, get) => {
       const found = locate(page, id);
       if (!found) return;
       const size = pageSize(page);
-      const box = resolveTextBox(found.el, size);
+      const box = resolveTextBox(found.el);
       if (!box) return;
       const next = mapElement(page, id, (el) => {
         const merged = { ...el, w: box.w, h: box.h };

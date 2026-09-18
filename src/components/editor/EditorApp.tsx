@@ -82,15 +82,13 @@ export function EditorApp() {
       } else {
         const max = kind === "logo" ? { w: 40, h: 40 } : { w: 110, h: 90 };
         const box = fitImageBox(img, max);
-        const page = api.pages.find((p) => p.id === api.activePageId);
-        const size = page ? pageSize(page) : { w: 210, h: 297 };
         api.addElement(kind, {
           src: img.src,
           name: kind === "logo" ? "شعار" : "صورة",
           w: box.w,
           h: box.h,
-          x: at ? Math.max(0, Math.min(at.x - box.w / 2, size.w - box.w)) : undefined,
-          y: at ? Math.max(0, Math.min(at.y - box.h / 2, size.h - box.h)) : undefined,
+          x: at ? at.x - box.w / 2 : undefined,
+          y: at ? at.y - box.h / 2 : undefined,
         });
       }
 
