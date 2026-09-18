@@ -43,7 +43,7 @@ export function HomePage() {
             <div>
             <p className="mb-3 text-[12px] font-bold tracking-[0.2em] text-green dark:text-gold-2">{PRODUCT_COPY.hero.eyebrow}</p>
             <h1 className="max-w-3xl text-[32px] font-extrabold leading-[1.3] sm:text-[48px]">{PRODUCT_COPY.hero.title}</h1>
-            <p className="mt-4 max-w-2xl text-[15px] leading-8 text-muted sm:text-[17px]">{PRODUCT_COPY.hero.description}</p>
+            <p className="mt-5 max-w-2xl text-[16px] leading-8 text-muted sm:text-[18px] sm:leading-9">{PRODUCT_COPY.hero.description}</p>
 
             <div className="mt-8 flex flex-wrap gap-3">
               <button
@@ -62,7 +62,7 @@ export function HomePage() {
                 كل مشاريعي
               </a>
             </div>
-            <p className="mt-4 text-[11px] text-muted">{PRODUCT_COPY.demoNote}</p>
+            <p className="mt-5 text-[12px] leading-6 text-muted">{PRODUCT_COPY.demoNote}</p>
 
             <input
               ref={fileInput}
@@ -97,7 +97,7 @@ export function HomePage() {
 
         <section className="border-b border-line bg-[#f6f8f5] dark:border-white/10 dark:bg-[#1c2021]">
           <div className="mx-auto grid w-full max-w-6xl gap-4 px-4 py-8 sm:grid-cols-3 sm:px-6">
-            {[[BriefcaseBusiness, "للفرق المؤسسية", "إنتاج منظم للمخرجات المتكررة."], [Workflow, "لسير العمل الحقيقي", "من البيانات والهيكل إلى ملف جاهز للعرض."], [ShieldCheck, "لـDemo آمن", "بيانات محلية تجريبية ومسار واضح للنسخة التجارية."]].map(([Icon, title, desc]) => <div key={String(title)} className="flex gap-3"><Icon className="mt-0.5 size-5 shrink-0 text-green" /><div><strong className="block text-[13px] font-extrabold">{String(title)}</strong><span className="mt-1 block text-[12px] leading-5 text-muted">{String(desc)}</span></div></div>)}
+            {[[BriefcaseBusiness, "للفرق المؤسسية", "إنتاج منظم للمخرجات المتكررة."], [Workflow, "لسير العمل الحقيقي", "من البيانات والهيكل إلى ملف جاهز للعرض."], [ShieldCheck, "لـDemo آمن", "بيانات محلية تجريبية ومسار واضح للنسخة التجارية."]].map(([Icon, title, desc]) => <div key={String(title)} className="flex gap-3"><Icon className="mt-0.5 size-5 shrink-0 text-green" /><div><strong className="block text-[13px] font-extrabold">{String(title)}</strong><span className="mt-1 block text-[13px] leading-6 text-muted">{String(desc)}</span></div></div>)}
           </div>
         </section>
 

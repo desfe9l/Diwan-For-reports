@@ -332,14 +332,21 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
           أفلت الصورة لإضافتها إلى الصفحة
         </div>
       )}
-      <div className="mx-auto flex w-max min-w-full flex-col items-center gap-10" dir="rtl">
+      <div className="mx-auto flex w-max min-w-full flex-col items-center gap-3" dir="rtl">
         {visible.map((page) => {
           const size = pageSize(page);
           const isActive = page.id === activePageId;
           const entered = enteredGroupId ? findElement(page.elements, enteredGroupId)?.el || null : null;
           const enteredKids = entered?.children ?? [];
           return (
-            <div key={page.id} className="page-frame" style={{ transform: `scale(${zoom})` }}>
+            <div
+              key={page.id}
+              className="page-frame"
+              style={{
+                transform: `scale(${zoom})`,
+                marginBottom: `${size.h * (zoom - 1)}mm`,
+              }}
+            >
               <div className="mb-2 flex items-center justify-between gap-4 text-[12px] text-muted" dir="rtl">
                 <strong className="text-ink dark:text-white">
                   {page.name}

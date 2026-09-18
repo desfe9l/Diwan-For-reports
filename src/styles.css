@@ -412,7 +412,7 @@
   position: relative;
   width: 210mm;
   height: 297mm;
-  overflow: visible; /* تم التعديل هنا ليسمح للعناصر بالخروج عن مساحة العمل البيضاء بحرية */
+  overflow: hidden;
   direction: rtl;
   background: #fff;
   color: #172033;
@@ -455,6 +455,7 @@
 .canvas-el.selected {
   outline: 1.5px solid #2563eb !important;
   outline-offset: 4px;
+  box-shadow: 0 0 0 1.5mm rgba(37, 99, 235, 0.18), var(--selection-shadow, none);
 }
 
 /*
@@ -462,8 +463,9 @@
  * handle-bearing primary element stays visually dominant.
  */
 .canvas-el.selected.is-secondary {
-  outline: 1px dashed rgba(37, 99, 235, 0.75);
+  outline: 1px dashed rgba(37, 99, 235, 0.95);
   outline-offset: 3px;
+  box-shadow: none;
 }
 
 .canvas-el.locked {
@@ -627,6 +629,29 @@
 
 .rotate-handle:active {
   cursor: grabbing;
+}
+
+@media (pointer: coarse) {
+  .handle {
+    width: 5mm;
+    height: 5mm;
+  }
+
+  .handle.nw { top: -8.5mm; left: -8.5mm; }
+  .handle.n  { top: -8.5mm; left: calc(50% - 2.5mm); }
+  .handle.ne { top: -8.5mm; right: -8.5mm; }
+  .handle.e  { top: calc(50% - 2.5mm); right: -8.5mm; }
+  .handle.se { bottom: -8.5mm; right: -8.5mm; }
+  .handle.s  { bottom: -8.5mm; left: calc(50% - 2.5mm); }
+  .handle.sw { bottom: -8.5mm; left: -8.5mm; }
+  .handle.w  { top: calc(50% - 2.5mm); left: -8.5mm; }
+
+  .rotate-handle {
+    width: 6mm;
+    height: 6mm;
+    top: -18mm;
+    left: calc(50% - 3mm);
+  }
 }
 
 .guide-v {
