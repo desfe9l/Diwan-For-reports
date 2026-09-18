@@ -283,7 +283,9 @@ function Studio({
     const rect = el.getBoundingClientRect();
     const pagePxW = activeSize.w * 3.7795;
     const pagePxH = activeSize.h * 3.7795;
-    const next = Math.min((rect.width - 96) / pagePxW, (rect.height - 128) / pagePxH);
+    // Add some padding around the page for better visibility
+    const padding = 20; // pixels
+    const next = Math.min((rect.width - padding * 2) / pagePxW, (rect.height - padding * 2) / pagePxH);
     setZoom(Math.max(0.2, Math.min(2, next)));
   }, [activeSize.h, activeSize.w, setZoom]);
 
@@ -474,7 +476,9 @@ function Studio({
     const el = document.querySelector(".studio-grid");
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const next = Math.min((rect.width - 144) / (bounds.w * 3.7795), (rect.height - 180) / (bounds.h * 3.7795));
+    // Add some padding around the selection for better visibility
+    const padding = 20; // pixels
+    const next = Math.min((rect.width - padding * 2) / (bounds.w * 3.7795), (rect.height - padding * 2) / (bounds.h * 3.7795));
     setZoom(Math.max(0.2, Math.min(2, next)));
     requestAnimationFrame(() => {
       const target = document.querySelector(`[data-el-id="${CSS.escape(selectedElements()[0]?.id || "")}"]`);

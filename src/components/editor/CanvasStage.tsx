@@ -130,10 +130,22 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
         : [];
     const gestureIds = [...new Set([...draggingIds, ...linkedIds])];
 
+    // When inside a group, children live in entered.children with
+    // group-relative coordinates; otherwise they're in page.elements.
+    const enteredGroup = enteredGroupId
+      ? findElement(page.elements, enteredGroupId)?.el || null
+      : null;
+    const enteredChildren = enteredGroup?.children || [];
+
     const origins: Record<string, { x: number; y: number }> = {};
     if (kind === "move" && !e.shiftKey) {
       for (const id of gestureIds) {
-        const found = page.elements.find((x) => x.id === id);
+        let found: CanvasEl | undefined;
+        if (enteredGroup && enteredChildren.some((c) => c.id === id)) {
+          found = enteredChildren.find((c) => c.id === id);
+        } else {
+          found = page.elements.find((x) => x.id === id);
+        }
         if (found) origins[id] = { x: found.x, y: found.y };
       }
     }
@@ -168,9 +180,13 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
         // snapped offset, so their spacing relative to each other is preserved.
         const appliedDx = next.x - op.orig.x;
         const appliedDy = next.y - op.orig.y;
+        // When inside a group, siblings live in entered.children; otherwise in page.elements.
+        const siblingList = op.parent && enteredGroup
+          ? enteredChildren
+          : page.elements;
         for (const [id, origin] of Object.entries(op.origins)) {
           if (id === op.id) continue;
-          const sibling = page.elements.find((x) => x.id === id);
+          const sibling = siblingList.find((x) => x.id === id);
           if (!sibling) continue;
           replaceElement(
             { ...sibling, x: origin.x + appliedDx, y: origin.y + appliedDy },
@@ -187,9 +203,9 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
         const raw = (op.orig.rotation || 0) + ((a1 - a0) * 180) / Math.PI;
         next.rotation = ev.shiftKey ? Math.round(raw / 15) * 15 : round(raw % 360);
       }
-      // Workspace allows free drag: elements may extend beyond the page
-      // boundary during editing. Only the page content is clipped at export.
-      // We keep a soft boundary (not hard clamp) so the user can freely
+      // Editing is free: an element may sit fully inside the page, straddle its
+      // edge, or move entirely outside it. Only export clips content to the
+      // page rectangle. We keep a generous soft boundary so the user can freely
       // position elements outside the page area when needed.
       const workspaceMargin = 120; // extra workspace area around page (mm)
       const workspaceW = size.w + workspaceMargin * 2;
