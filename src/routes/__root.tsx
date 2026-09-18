@@ -16,11 +16,6 @@ export const Route = createRootRoute({
       { name: "theme-color", content: "#006C35" },
       { name: "description", content: DESCRIPTION },
       { name: "author", content: BRAND.developer },
-      { property: "og:title", content: APP_NAME },
-      { property: "og:description", content: DESCRIPTION },
-      { property: "og:site_name", content: BRAND.lockup },
-      { property: "og:locale", content: "ar_SA" },
-      { property: "og:locale:alternate", content: "en_US" },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },

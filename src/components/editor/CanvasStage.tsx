@@ -214,8 +214,8 @@ export function CanvasStage({ onDropImage }: { onDropImage?: (file: File, at?: {
       next.h = Math.max(clamp(next.h, MIN_SIZE, workspaceH), MIN_SIZE);
       // Soft boundary: allow elements to extend beyond page but keep them
       // within a generous workspace area so nothing disappears unexpectedly.
-      next.x = Math.max(-workspaceMargin, Math.min(next.x, workspaceW - next.w + workspaceMargin));
-      next.y = Math.max(-workspaceMargin, Math.min(next.y, workspaceH - next.h + workspaceMargin));
+      next.x = Math.max(-workspaceMargin, Math.min(next.x, size.w + workspaceMargin - next.w));
+      next.y = Math.max(-workspaceMargin, Math.min(next.y, size.h + workspaceMargin - next.h));
       replaceElement(op.parent ? { ...next, x: next.x - op.parent.x, y: next.y - op.parent.y } : next, true);
     };
 
