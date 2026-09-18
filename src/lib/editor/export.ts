@@ -119,6 +119,11 @@ export async function capturePages(
     await waitFrame();
     await waitImages(node);
     await ensureFonts(node);
+    // The live page allows elements to overflow its edges (free positioning
+    // while editing — see model.ts:constrainElement). Export must still be
+    // page-bounded, so we clip only the *cloned* node html2canvas rasterises,
+    // never the interactive DOM the user is actually working in.
+    const pageId = node.getAttribute("data-export-page");
     const canvas = await html2canvas(node, {
       scale,
       useCORS: true,
@@ -131,6 +136,12 @@ export async function capturePages(
       height: node.offsetHeight,
       windowWidth: node.offsetWidth,
       windowHeight: node.offsetHeight,
+      onclone: (clonedDoc) => {
+        const target = pageId
+          ? (clonedDoc.querySelector(`[data-export-page="${CSS.escape(pageId)}"]`) as HTMLElement | null)
+          : null;
+        if (target) target.style.overflow = "hidden";
+      },
     });
     out.push({ canvas, w, h });
     if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
@@ -489,7 +500,7 @@ export function buildStandaloneHtml(project: Project, pages: Page[]) {
   @page { size: ${firstSize.w}mm ${firstSize.h}mm; margin: 0; }
   * { box-sizing: border-box; }
   body { margin: 0; background: #e8eaef; font-family: "Tajawal","Cairo",sans-serif; }
-  .page { position: relative; overflow: visible; background: #fff; margin: 12mm auto; box-shadow: 0 18px 50px rgba(15,23,42,.16); page-break-after: always; }
+  .page { position: relative; overflow: hidden; background: #fff; margin: 12mm auto; box-shadow: 0 18px 50px rgba(15,23,42,.16); page-break-after: always; }
   .el { position: absolute; overflow: visible; }
   .text, .box { width: 100%; height: 100%; white-space: pre-wrap; word-break: break-word; }
   img { display: block; }

@@ -25,6 +25,7 @@ import {
   type PackId,
   type Project,
   type ProjectMeta,
+  type ProjectSnapshot,
   type SizeId,
   type ThemeId,
 } from "./model";
@@ -236,7 +237,7 @@ interface EditorStore extends Project, Ui, History {
   commit: () => void;
 }
 
-function projectSlice(s: Project): Project {
+function projectSlice(s: ProjectSnapshot): ProjectSnapshot {
   return {
     version: s.version,
     name: s.name,
@@ -246,6 +247,9 @@ function projectSlice(s: Project): Project {
     id: s.id,
     createdAt: s.createdAt,
     defaultSize: s.defaultSize,
+    // History entries need to remember which page was active so Undo/Redo
+    // can restore it — see the field's doc comment on Project.
+    activePageId: s.activePageId,
   };
 }
 
@@ -308,7 +312,7 @@ function pickable(page: Page, enteredGroupId: string | null, id: string): boolea
 }
 
 /** Normalises anything loaded from disk, a file, or an older schema version. */
-function normalizeProject(incoming: Project): Project {
+function normalizeProject(incoming: ProjectSnapshot): ProjectSnapshot {
   const pages = incoming.pages?.length ? incoming.pages : createProject("blank").pages;
   pages.forEach((p) => {
     p.elements ||= [];
@@ -340,6 +344,10 @@ function normalizeProject(incoming: Project): Project {
     id: incoming.id,
     createdAt: incoming.createdAt,
     updatedAt: incoming.updatedAt,
+    // Preserved so undo/redo can restore the page the user was on — see
+    // Project.activePageId. Fresh loads (library/template open) never set
+    // it, so applyProject still falls back to the first page for those.
+    activePageId: incoming.activePageId,
     defaultSize: incoming.defaultSize || "a4-portrait",
   };
 }
@@ -364,11 +372,19 @@ export const useEditor = create<EditorStore>((set, get) => {
     scheduleSave();
   };
 
-  const applyProject = (incoming: Project, extra: Partial<EditorStore> = {}) => {
+  const applyProject = (incoming: ProjectSnapshot, extra: Partial<EditorStore> = {}) => {
     const project = normalizeProject(incoming);
+    // Prefer an explicit caller override, then the page the snapshot itself
+    // remembers being on (undo/redo), then fall back to the first page for
+    // a genuinely fresh load. Guard against a stale id pointing at a page
+    // that no longer exists in this particular snapshot.
+    const wanted = extra.activePageId || project.activePageId;
+    const activePageId =
+      (wanted && project.pages.some((p) => p.id === wanted) ? wanted : undefined) ||
+      project.pages[0]?.id;
     set({
       ...project,
-      activePageId: extra.activePageId || project.pages[0]?.id,
+      activePageId,
       selectedId: null,
       selectedIds: [],
       enteredGroupId: null,

@@ -225,6 +225,17 @@ export interface Project {
   defaultSize?: SizeId;
 }
 
+/**
+ * A Project snapshot that also remembers which page was active. Only
+ * meaningful for in-memory history entries (undo/redo) — persisted project
+ * files don't carry this, since loading always starts on the first page.
+ * Carrying it through history means Undo restores the page the user was
+ * actually on instead of silently jumping back to page 1. Kept out of the
+ * base `Project` type so it doesn't collide with the editor store's own
+ * (always-defined) `activePageId`.
+ */
+export type ProjectSnapshot = Project & { activePageId?: string };
+
 export interface ProjectMeta {
   id: string;
   name: string;
@@ -732,11 +743,27 @@ export function createElement(type: ElType, over: Partial<CanvasEl> = {}, theme?
   return el;
 }
 
+/**
+ * Sanitises an element's geometry — NOT a page-bounds clamp.
+ *
+ * Editing is free: an element may sit fully inside the page, straddle its
+ * edge, or move entirely outside it (see WORKSPACE_MARGIN in CanvasStage).
+ * Only export clips content to the page rectangle. This function's only job
+ * is to guard against corrupt/non-finite values (a bad paste, an old file,
+ * a manual edit) — it must never pull a legitimately off-page element back
+ * onto the page, or every drag/reload would silently undo itself.
+ *
+ * `size` (the page size) is still used to size the sanity ceiling: large
+ * enough that any real design fits, small enough that garbage data can't
+ * blow up layout/export math. ±1e4mm matches the bound export.ts already
+ * applies per-field when serialising, so the two stay consistent.
+ */
 export function constrainElement(el: CanvasEl, size: { w: number; h: number } = A4) {
-  el.w = clamp(Number(el.w) || MIN_SIZE, MIN_SIZE, size.w);
-  el.h = clamp(Number(el.h) || MIN_SIZE, MIN_SIZE, size.h);
-  el.x = clamp(Number(el.x) || 0, 0, Math.max(0, size.w - el.w));
-  el.y = clamp(Number(el.y) || 0, 0, Math.max(0, size.h - el.h));
+  const maxDim = Math.max(size.w, size.h, A4.w, A4.h) * 10;
+  el.w = clamp(Number(el.w) || MIN_SIZE, MIN_SIZE, maxDim);
+  el.h = clamp(Number(el.h) || MIN_SIZE, MIN_SIZE, maxDim);
+  el.x = clamp(Number.isFinite(Number(el.x)) ? Number(el.x) : 0, -1e4, 1e4);
+  el.y = clamp(Number.isFinite(Number(el.y)) ? Number(el.y) : 0, -1e4, 1e4);
   el.opacity = clamp(Number.isFinite(Number(el.opacity)) ? Number(el.opacity) : 1, 0, 1);
   el.rotation = Number(el.rotation) || 0;
 }
