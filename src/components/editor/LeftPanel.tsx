@@ -18,7 +18,6 @@ import {
   Ruler,
   Gauge,
   FileText,
-  Upload,
   Baseline,
   Eye,
   X,
@@ -355,15 +354,6 @@ export function LeftPanel({ onUpload }: { onUpload: (kind: "image" | "logo" | "f
             </section>
 
             <AssetLibrary />
-
-            <button
-              type="button"
-              onClick={() => onUpload("font")}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] border border-line text-[12px] font-extrabold dark:border-white/10"
-            >
-              <Upload className="size-3.5" />
-              تحميل خط مخصص (TTF/OTF)
-            </button>
           </div>
         )}
 
@@ -425,7 +415,7 @@ export function LeftPanel({ onUpload }: { onUpload: (kind: "image" | "logo" | "f
           </div>
         )}
 
-        {tab === "fonts" && <FontsTab onUpload={onUpload} />}
+        {tab === "fonts" && <FontsTab />}
 
         {tab === "templates" && (
           <div>
@@ -797,20 +787,22 @@ function TablePickerOverlay({
  * author uploaded. Applying a font here updates the selected text element, so
  * the panel doubles as the properties shortcut for typography.
  */
-function FontsTab({ onUpload }: { onUpload: (kind: "image" | "logo" | "font") => void }) {
+function FontsTab() {
   const choices = useEditor((s) => s.fontChoices);
   const probed = useEditor((s) => s.fontsProbed);
   const selectedId = useEditor((s) => s.selectedId);
   const pages = useEditor((s) => s.pages);
   const activePageId = useEditor((s) => s.activePageId);
   const updateStyle = useEditor((s) => s.updateStyle);
+  const [query, setQuery] = useState("");
 
   const page = pages.find((p) => p.id === activePageId);
   const selected = page?.elements.find((e) => e.id === selectedId);
   const current = selected?.style.fontFamily;
-  const bundled = choices.filter((f) => f.source === "bundled");
-  const system = choices.filter((f) => f.source === "system");
-  const uploaded = choices.filter((f) => f.source === "uploaded");
+  const matching = choices.filter((f) => f.family.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  const bundled = matching.filter((f) => f.source === "bundled");
+  const system = matching.filter((f) => f.source === "system");
+  const uploaded = matching.filter((f) => f.source === "uploaded");
 
   const apply = (family: string) => {
     if (!selected) return;
@@ -864,6 +856,16 @@ function FontsTab({ onUpload }: { onUpload: (kind: "image" | "logo" | "font") =>
         </p>
       </header>
 
+      <label className="grid gap-1 text-[11px] font-extrabold text-muted">
+        البحث في الخطوط
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="اكتب اسم الخط"
+          className="h-9 rounded-[8px] border border-line bg-white px-2.5 text-[12px] font-semibold text-ink outline-none focus:border-navy-2 dark:border-white/10 dark:bg-white/5 dark:text-white"
+        />
+      </label>
+
       {!selected && (
         <p className="rounded-[8px] border border-dashed border-line p-3 text-[11px] leading-5 text-muted">
           حدّد عنصر نص على الصفحة لتفعيل تطبيق الخطوط. يمكنك تصفّح القائمة الآن.
@@ -874,17 +876,8 @@ function FontsTab({ onUpload }: { onUpload: (kind: "image" | "logo" | "font") =>
       {group("خطوط جهازك", system, "خطوط مثبّتة على هذا الجهاز — قد لا تتوفر على جهاز آخر.")}
       {group("خطوط مرفوعة", uploaded, "خطوط أضفتها أنت في هذا المتصفح.")}
 
-      <button
-        type="button"
-        onClick={() => onUpload("font")}
-        className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] border border-line text-[12px] font-extrabold dark:border-white/10"
-      >
-        <Upload className="size-3.5" /> تحميل خط مخصص (TTF / OTF / WOFF)
-      </button>
-
       <p className="text-[10px] leading-5 text-muted">
-        ملاحظة: الخطوط المرفوعة تُسجَّل في هذا المتصفح فقط. عند فتح المشروع على جهاز آخر، ثبّت الخط عليه أو
-        استخدم أحد الخطوط المضمّنة لضمان تطابق التصدير.
+        تعتمد القائمة على الخطوط المضمّنة وما يستطيع المتصفح التحقق منه على هذا الجهاز. قد لا تتوفر خطوط الجهاز على أجهزة أخرى.
       </p>
     </div>
   );

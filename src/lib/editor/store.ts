@@ -204,6 +204,8 @@ interface EditorStore extends Project, Ui, History {
   renameElement: (id: string, name: string) => void;
   setElementFlag: (id: string, flag: "locked" | "hidden", value?: boolean) => void;
   moveLayer: (id: string, dir: -1 | 1) => void;
+  /** Reorder top-level layers using their visible (front-to-back) list order. */
+  reorderLayers: (fromId: string, toId: string) => void;
   addElement: (type: ElType, over?: Partial<CanvasEl>) => string | undefined;
   updateElement: (id: string, patch: Partial<CanvasEl>, live?: boolean) => void;
   updateStyle: (id: string, patch: CanvasEl["style"], live?: boolean) => void;
@@ -433,7 +435,7 @@ export const useEditor = create<EditorStore>((set, get) => {
     showGrid: false,
     snapGrid: true,
     snapElements: true,
-    previewAll: false,
+    previewAll: true,
     focusMode: false,
     dark: true,
     leftTab: "elements",
@@ -520,6 +522,7 @@ export const useEditor = create<EditorStore>((set, get) => {
           rightOpen: Boolean(ui.rightOpen),
           leftCollapsed: Boolean(ui.leftCollapsed),
           rightCollapsed: Boolean(ui.rightCollapsed),
+          previewAll: true,
           zoom: typeof ui.zoom === "number" ? clamp(ui.zoom, 0.35, 1.6) : 0.82,
         });
         if (active) applyProject(active, { zoom: get().zoom });
@@ -724,8 +727,8 @@ export const useEditor = create<EditorStore>((set, get) => {
       scheduleSave(500);
     },
     setActivePage: (id) => {
-      if (id === get().activePageId && !get().previewAll) return;
-      set({ activePageId: id, selectedId: null, selectedIds: [], enteredGroupId: null, previewAll: false });
+      if (id === get().activePageId) return;
+      set({ activePageId: id, selectedId: null, selectedIds: [], enteredGroupId: null });
     },
     select: (id) =>
       set((s) => ({
@@ -1172,6 +1175,25 @@ export const useEditor = create<EditorStore>((set, get) => {
       pushHistory();
     },
 
+    reorderLayers: (fromId, toId) => {
+      const s = get();
+      const page = activePageOf(s);
+      if (!page || fromId === toId) return;
+      const ordered = [...page.elements].sort((a, b) => b.z - a.z);
+      const from = ordered.findIndex((el) => el.id === fromId);
+      const to = ordered.findIndex((el) => el.id === toId);
+      if (from < 0 || to < 0) return;
+      const [moved] = ordered.splice(from, 1);
+      ordered.splice(to, 0, moved);
+      const zById = new Map(ordered.map((el, index) => [el.id, ordered.length - index]));
+      const next = {
+        ...page,
+        elements: page.elements.map((el) => ({ ...el, z: zById.get(el.id) ?? el.z })),
+      };
+      set({ pages: s.pages.map((candidate) => (candidate.id === page.id ? next : candidate)) });
+      pushHistory();
+    },
+
     toggleLock: () => {
       const s = get();
       const page = activePageOf(s);
@@ -1232,7 +1254,7 @@ export const useEditor = create<EditorStore>((set, get) => {
         w: preset.w,
         h: preset.h,
       };
-      set({ pages: [...s.pages, p], activePageId: p.id, selectedId: null, previewAll: false });
+      set({ pages: [...s.pages, p], activePageId: p.id, selectedId: null, previewAll: true });
       pushHistory();
     },
 
@@ -1245,7 +1267,7 @@ export const useEditor = create<EditorStore>((set, get) => {
         return;
       }
       const p = createTemplatePage(id, THEMES[s.theme], s.orgName);
-      set({ pages: [...s.pages, p], activePageId: p.id, selectedId: null, previewAll: false });
+      set({ pages: [...s.pages, p], activePageId: p.id, selectedId: null, previewAll: true });
       pushHistory();
     },
 

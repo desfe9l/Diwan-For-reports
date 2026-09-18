@@ -11,6 +11,7 @@ import {
   Eye,
   EyeOff,
   Grid2x2,
+  GripVertical,
   ImagePlus,
   Link,
   Lock,
@@ -66,6 +67,9 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
   const theme = THEMES[useEditor((s) => s.theme)];
   const [cellEditor, setCellEditor] = useState(false);
   const [savingAsset, setSavingAsset] = useState(false);
+  const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
+  const [dropLayerId, setDropLayerId] = useState<string | null>(null);
+  const reorderLayers = useEditor((s) => s.reorderLayers);
 
   /**
    * Turn the selected element into a reusable picture.
@@ -117,6 +121,26 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
   const layers = [...(page?.elements || [])].sort((a, b) => b.z - a.z);
   const selectedCount = useEditor((s) => s.selectedIds.length);
 
+  const startLayerDrag = (id: string) => (event: React.PointerEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggedLayerId(id);
+    setDropLayerId(id);
+    const layerAtPointer = (pointer: PointerEvent) =>
+      document.elementFromPoint(pointer.clientX, pointer.clientY)?.closest<HTMLElement>("[data-layer-id]")?.dataset.layerId || null;
+    const move = (pointer: PointerEvent) => setDropLayerId(layerAtPointer(pointer));
+    const up = (pointer: PointerEvent) => {
+      const target = layerAtPointer(pointer);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setDraggedLayerId(null);
+      setDropLayerId(null);
+      if (target && target !== id) reorderLayers(id, target);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   return (
     <aside className="editor-properties flex h-full min-h-0 flex-col border-r border-line bg-white dark:border-white/10 dark:bg-[#161c26]">
       <div className="grid shrink-0 grid-cols-2 gap-2 border-b border-line p-2 dark:border-white/10">
@@ -147,7 +171,13 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
               <EmptyNote>لا توجد عناصر في هذه الصفحة بعد.</EmptyNote>
             )}
             {layers.map((layer) => (
-              <LayerRow key={layer.id} layer={layer} />
+              <LayerRow
+                key={layer.id}
+                layer={layer}
+                dragging={draggedLayerId === layer.id}
+                dropTarget={dropLayerId === layer.id && draggedLayerId !== layer.id}
+                onDragStart={startLayerDrag(layer.id)}
+              />
             ))}
           </div>
         )}
@@ -1263,7 +1293,19 @@ function shadowId(value: string | undefined) {
  * can be picked without stepping into it on the canvas. Renaming happens inline
  * so the author stays in the list while organising a busy page.
  */
-function LayerRow({ layer, depth = 0 }: { layer: CanvasEl; depth?: number }) {
+function LayerRow({
+  layer,
+  depth = 0,
+  dragging = false,
+  dropTarget = false,
+  onDragStart,
+}: {
+  layer: CanvasEl;
+  depth?: number;
+  dragging?: boolean;
+  dropTarget?: boolean;
+  onDragStart?: (event: React.PointerEvent) => void;
+}) {
   const selected = useEditor((s) => s.selectedIds.includes(layer.id));
   const select = useEditor((s) => s.select);
   const toggleSelect = useEditor((s) => s.toggleSelect);
@@ -1284,9 +1326,12 @@ function LayerRow({ layer, depth = 0 }: { layer: CanvasEl; depth?: number }) {
   return (
     <div className="grid gap-1">
       <div
+        data-layer-id={depth === 0 ? layer.id : undefined}
         className={cn(
           "flex items-center gap-1.5 rounded-[8px] border px-2 py-1.5",
           selected ? "border-navy-2 bg-navy-2/5" : "border-line dark:border-white/10",
+          dragging && "opacity-50",
+          dropTarget && "drop-target",
         )}
         style={depth ? { marginInlineStart: `${depth * 10}px` } : undefined}
       >
@@ -1306,6 +1351,12 @@ function LayerRow({ layer, depth = 0 }: { layer: CanvasEl; depth?: number }) {
             className="min-w-0 flex-1 rounded-[6px] border border-line px-1.5 py-0.5 text-[12px] font-bold dark:border-white/15"
           />
         ) : (
+          <>
+          {depth === 0 && onDragStart && (
+            <button type="button" onPointerDown={onDragStart} title="اسحب لإعادة ترتيب الطبقة" aria-label={`إعادة ترتيب ${layer.name || TYPE_NAME[layer.type]}`} className="drag-handle grid size-7 shrink-0 place-items-center rounded-[6px] border border-line text-muted dark:border-white/10">
+              <GripVertical className="size-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => (e.shiftKey ? toggleSelect(layer.id) : select(layer.id))}
@@ -1328,6 +1379,7 @@ function LayerRow({ layer, depth = 0 }: { layer: CanvasEl; depth?: number }) {
               <span className="text-[10px] tabular-nums">{layer.z}</span>
             </span>
           </button>
+          </>
         )}
         <button
           type="button"
