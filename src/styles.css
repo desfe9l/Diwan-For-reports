@@ -231,6 +231,29 @@
   color: var(--editor-text-secondary);
 }
 
+/* Keep property values readable in both editor themes instead of inheriting page-form colors. */
+.editor-ui .editor-properties .editor-property-field {
+  color: var(--editor-text-secondary);
+}
+
+.editor-ui .editor-properties .field-control > input:not([type="range"]):not([type="color"]),
+.editor-ui .editor-properties .field-control > select,
+.editor-ui .editor-properties .field-control > textarea {
+  background-color: var(--editor-surface) !important;
+  border-color: var(--editor-border) !important;
+  color: var(--editor-text) !important;
+}
+
+.editor-ui .editor-properties .field-control > input[type="number"] {
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-ui .editor-properties .field-control > input::placeholder,
+.editor-ui .editor-properties .field-control > textarea::placeholder {
+  color: var(--editor-text-secondary);
+  opacity: 1;
+}
+
 /* Reset inherited UI tokens at the document boundary. No design color is themed. */
 .editor-ui .report-page {
   --color-ink: #172033;

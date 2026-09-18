@@ -118,7 +118,7 @@ export function RightPanel({ onReplaceImage }: { onReplaceImage: (id: string) =>
   const selectedCount = useEditor((s) => s.selectedIds.length);
 
   return (
-    <aside className="flex h-full min-h-0 flex-col border-r border-line bg-white dark:border-white/10 dark:bg-[#161c26]">
+    <aside className="editor-properties flex h-full min-h-0 flex-col border-r border-line bg-white dark:border-white/10 dark:bg-[#161c26]">
       <div className="grid shrink-0 grid-cols-2 gap-2 border-b border-line p-2 dark:border-white/10">
         {(
           [
@@ -1440,7 +1440,7 @@ function CommitRange({
 
 function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
   return (
-    <label className={cn("grid gap-1 text-[11px] font-extrabold text-muted", full && "col-span-2")}>
+    <label className={cn("editor-property-field grid gap-1 text-[11px] font-extrabold text-muted", full && "col-span-2")}>
       {label}
       <div className="field-control [&_input]:h-9 [&_input]:w-full [&_input]:rounded-[8px] [&_input]:border [&_input]:border-line [&_input]:bg-white [&_input]:px-2.5 [&_input]:text-[13px] [&_input]:font-semibold [&_input]:text-ink dark:[&_input]:border-white/10 dark:[&_input]:bg-white/5 dark:[&_input]:text-white [&_input[type=color]]:p-1 [&_input[type=range]]:h-9 [&_select]:h-9 [&_select]:w-full [&_select]:rounded-[8px] [&_select]:border [&_select]:border-line [&_select]:bg-white [&_select]:px-2.5 [&_select]:text-[13px] dark:[&_select]:border-white/10 dark:[&_select]:bg-white/5 dark:[&_select]:text-white [&_textarea]:min-h-[80px] [&_textarea]:w-full [&_textarea]:rounded-[8px] [&_textarea]:border [&_textarea]:border-line [&_textarea]:bg-white [&_textarea]:p-2.5 [&_textarea]:text-[13px] [&_textarea]:leading-6 dark:[&_textarea]:border-white/10 dark:[&_textarea]:bg-white/5 dark:[&_textarea]:text-white">
         {children}
