@@ -290,6 +290,13 @@ function locate(page: Page, id: string) {
   return findElement(page.elements, id);
 }
 
+function cloneWithFreshIds(el: CanvasEl): CanvasEl {
+  const copy = clone(el);
+  copy.id = uid(copy.type === "group" ? "grp" : "el");
+  if (copy.children?.length) copy.children = copy.children.map(cloneWithFreshIds);
+  return copy;
+}
+
 /** True when `ancestorId` contains `id` at any depth. */
 function isDescendant(page: Page, ancestorId: string, id: string): boolean {
   const found = findElement(page.elements, ancestorId);
@@ -1177,18 +1184,18 @@ export const useEditor = create<EditorStore>((set, get) => {
 
     copyElementToPage: (elId, pageId) => {
       const s = get();
-      const source = s.pages.find((p) => p.elements.some((e) => e.id === elId));
+      const source = s.pages.find((p) => Boolean(locate(p, elId)));
       const target = s.pages.find((p) => p.id === pageId);
-      const el = source?.elements.find((e) => e.id === elId);
+      const el = source ? locate(source, elId)?.el : undefined;
       if (!source || !target || !el) return;
-      const copy = clone(el);
-      copy.id = uid("el");
+      const copy = cloneWithFreshIds(el);
       copy.z = nextZ(target);
       constrainElement(copy, pageSize(target));
       set({
         pages: s.pages.map((p) => (p.id === target.id ? { ...p, elements: [...p.elements, copy] } : p)),
         activePageId: target.id,
         selectedId: copy.id,
+        selectedIds: [copy.id],
       });
       pushHistory();
       toast.success(`تم نقل العنصر إلى «${target.name}»`);
@@ -1225,7 +1232,7 @@ export const useEditor = create<EditorStore>((set, get) => {
         ...clone(page),
         id: uid("page"),
         name: `${page.name} نسخة`,
-        elements: page.elements.map((e) => ({ ...clone(e), id: uid("el") })),
+        elements: page.elements.map(cloneWithFreshIds),
       };
       const idx = s.pages.findIndex((p) => p.id === page.id);
       const pages = [...s.pages];
