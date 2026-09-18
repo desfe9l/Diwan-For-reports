@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, FilePenLine, FolderKanban, LayoutTemplate, LockKeyhole, Palette, RotateCcw, Save, ShieldCheck, Type } from "lucide-react";
-import { SiteFooter, SiteHeader } from "@/components/site/SiteChrome";
+import { BrandLogo, SiteFooter, SiteHeader } from "@/components/site/SiteChrome";
 import { DEFAULT_BRAND_KIT, type BrandKit } from "@/lib/product/product";
 import { readBrandKit, resetBrandKit, saveBrandKit } from "@/lib/product/brand-kit";
 import { BRAND } from "@/lib/brand";
@@ -17,7 +17,7 @@ export function BrandKitPage() {
     <div className="min-h-full bg-paper dark:bg-[#111722]">
       <SiteHeader current="/brand-kit" />
       <main className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
-        <section className="border-b border-line pb-10 dark:border-white/10"><div className="flex items-center gap-4"><img src="/nasaq-mark.svg" alt="شعار نسق" className="size-16" /><div><p className="text-[11px] font-bold tracking-[0.18em] text-green">هوية المنتج</p><h1 className="mt-1 text-[32px] font-extrabold">{BRAND.name}</h1><p className="mt-2 max-w-2xl text-[14px] leading-7 text-muted">منصة عربية تساعدك على إنشاء التقارير والمستندات والعروض وتنظيمها في مساحة عمل واحدة.</p></div></div></section>
+        <section className="border-b border-line pb-10 dark:border-white/10"><div className="flex items-center gap-4"><span className="scale-125 origin-right"><BrandLogo /></span><div><p className="text-[11px] font-bold tracking-[0.18em] text-green">هوية المنتج</p><p className="mt-3 max-w-2xl text-[14px] leading-7 text-muted">منصة عربية تساعدك على إنشاء التقارير والمستندات والعروض وتنظيمها في مساحة عمل واحدة.</p></div></div></section>
 
         <section className="grid gap-6 border-b border-line py-10 lg:grid-cols-[1.15fr_.85fr] dark:border-white/10"><div><h2 className="text-[20px] font-extrabold">صُممت وطُوّرت بعناية</h2><p className="mt-3 text-[14px] leading-7 text-muted">{BRAND.owner} هو المصمم والمطور خلف {BRAND.name}. يركز العمل على أدوات عملية وواضحة تساعد الفرق والأفراد على تجهيز مخرجاتهم الرسمية بطريقة منظمة.</p></div><div className="flex items-center gap-4 border-r-2 border-gold pr-4"><img src="/nasaq-mark.svg" alt="" aria-hidden className="size-12" /><div><strong className="block text-[16px] font-extrabold">فيصل المضياني</strong><span className="mt-1 block text-[12px] text-muted">المصمم والمطور</span></div></div></section>
 

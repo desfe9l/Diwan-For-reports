@@ -28,6 +28,7 @@ import { PageRail } from "./PageRail";
 import { ExportDialog } from "./ExportDialog";
 import { cn } from "@/lib/utils";
 import { BRAND } from "@/lib/brand";
+import { BrandLogo } from "@/components/site/SiteChrome";
 import { WorkspaceOverlays, WorkspaceStatusBar, type MenuPoint } from "./WorkspaceOverlays";
 
 /**
@@ -503,10 +504,7 @@ function Studio({
             <Home className="size-4" />
             <span className="hidden sm:inline">الرئيسية</span>
           </a>
-          <div className="hidden md:block">
-            <strong className="block text-[13px] font-extrabold leading-none">فيصل العنزي</strong>
-            <span className="text-[10px] text-muted">منصة تصميم التقارير</span>
-          </div>
+          <div className="hidden md:block"><BrandLogo compact /></div>
         </div>
 
         {/* Scrolls rather than clipping when the viewport cannot hold every control. */}
