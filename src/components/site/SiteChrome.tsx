@@ -14,11 +14,7 @@ export function SiteHeader({ current }: { current: string }) {
     <header className="sticky top-0 z-40 border-b border-line bg-white/95 backdrop-blur dark:border-white/10 dark:bg-[#111722]/95">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <a href="/" className="flex items-center gap-2.5">
-          <Mark />
-          <span className="leading-tight">
-            <strong className="block text-[15px] font-extrabold">{BRAND.lockup}</strong>
-            <span className="block text-[11px] text-muted">{BRAND.platform}</span>
-          </span>
+          <BrandLogo />
         </a>
 
         <nav className="hidden items-center gap-1 lg:flex">
@@ -91,8 +87,7 @@ export function SiteFooter() {
       <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-8 sm:px-6 md:grid-cols-3">
         <div>
           <div className="flex items-center gap-2.5">
-            <Mark />
-            <strong className="text-[14px] font-extrabold">{BRAND.lockup}</strong>
+            <BrandLogo compact />
           </div>
           <p className="mt-3 text-[12px] leading-6 text-muted">{BRAND.tagline}</p>
           <p className="mt-2 text-[11px] leading-5 text-muted">
@@ -132,8 +127,14 @@ export function SiteFooter() {
   );
 }
 
-function Mark() {
+export function BrandLogo({ compact = false }: { compact?: boolean }) {
   return (
-    <img src="/nasaq-mark.svg" alt="" aria-hidden className="size-9 shrink-0" />
+    <span className="inline-flex items-center gap-2.5" aria-label="نَسَق | NASAQ">
+      <img src="/nasaq-mark.svg" alt="" aria-hidden className={compact ? "size-8 shrink-0" : "size-9 shrink-0"} />
+      <span className="grid leading-none">
+        <strong className={compact ? "text-[14px] font-extrabold" : "text-[15px] font-extrabold"}>نَسَق</strong>
+        <span className="mt-1 text-[8px] font-bold tracking-[0.16em] text-muted" dir="ltr">NASAQ</span>
+      </span>
+    </span>
   );
 }
