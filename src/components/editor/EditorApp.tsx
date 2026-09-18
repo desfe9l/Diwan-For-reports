@@ -82,15 +82,13 @@ export function EditorApp() {
       } else {
         const max = kind === "logo" ? { w: 40, h: 40 } : { w: 110, h: 90 };
         const box = fitImageBox(img, max);
-        const page = api.pages.find((p) => p.id === api.activePageId);
-        const size = page ? pageSize(page) : { w: 210, h: 297 };
         api.addElement(kind, {
           src: img.src,
           name: kind === "logo" ? "شعار" : "صورة",
           w: box.w,
           h: box.h,
-          x: at ? Math.max(0, Math.min(at.x - box.w / 2, size.w - box.w)) : undefined,
-          y: at ? Math.max(0, Math.min(at.y - box.h / 2, size.h - box.h)) : undefined,
+          x: at ? at.x - box.w / 2 : undefined,
+          y: at ? at.y - box.h / 2 : undefined,
         });
       }
 
@@ -283,7 +281,9 @@ function Studio({
     const rect = el.getBoundingClientRect();
     const pagePxW = activeSize.w * 3.7795;
     const pagePxH = activeSize.h * 3.7795;
-    const next = Math.min((rect.width - 96) / pagePxW, (rect.height - 128) / pagePxH);
+    // Add some padding around the page for better visibility
+    const padding = 20; // pixels
+    const next = Math.min((rect.width - padding * 2) / pagePxW, (rect.height - padding * 2) / pagePxH);
     setZoom(Math.max(0.2, Math.min(2, next)));
   }, [activeSize.h, activeSize.w, setZoom]);
 
@@ -474,7 +474,9 @@ function Studio({
     const el = document.querySelector(".studio-grid");
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const next = Math.min((rect.width - 144) / (bounds.w * 3.7795), (rect.height - 180) / (bounds.h * 3.7795));
+    // Add some padding around the selection for better visibility
+    const padding = 20; // pixels
+    const next = Math.min((rect.width - padding * 2) / (bounds.w * 3.7795), (rect.height - padding * 2) / (bounds.h * 3.7795));
     setZoom(Math.max(0.2, Math.min(2, next)));
     requestAnimationFrame(() => {
       const target = document.querySelector(`[data-el-id="${CSS.escape(selectedElements()[0]?.id || "")}"]`);

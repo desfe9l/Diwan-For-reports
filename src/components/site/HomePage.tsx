@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
-import { ArrowLeft, BriefcaseBusiness, FileText, FolderOpen, LayoutTemplate, Table2, Gauge, FileDown, Palette, ShieldCheck, Workflow } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, FileText, LayoutTemplate, Table2, FileDown, Palette, ShieldCheck, Workflow } from "lucide-react";
 import { toast } from "sonner";
-import { BRAND } from "@/lib/brand";
 import { PACKS } from "@/lib/editor/templates";
 import { type PackId } from "@/lib/editor/model";
 import { useEditor } from "@/lib/editor/store";

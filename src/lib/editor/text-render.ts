@@ -104,22 +104,19 @@ export function prepareText(el: CanvasEl): PreparedText {
  *
  * `null` means "leave the author's box alone". `autoHeight` grows downwards
  * only — shrinking back would make the box jump while the author types, and an
- * element that only ever grows is predictable. The page bound is passed in so a
- * growing box never runs off the sheet.
+ * element that only ever grows is predictable. Text boxes may live outside the
+ * page, so fitting never clamps them to page edges.
  */
-export function resolveTextBox(
-  el: CanvasEl,
-  page: { w: number; h: number },
-): { w: number; h: number } | null {
+export function resolveTextBox(el: CanvasEl): { w: number; h: number } | null {
   if (!FIT_TYPES.has(el.type)) return null;
   const prepared = prepareText(el);
   const mode = textBoxMode(el);
   if (mode === "autoHeight") {
-    const h = Math.min(page.h - el.y, Math.max(el.h, prepared.neededHeight + (el.style?.slackMm || 0)));
+    const h = Math.max(el.h, prepared.neededHeight + (el.style?.slackMm || 0));
     return h > el.h + 0.2 ? { w: el.w, h } : null;
   }
   if (mode === "autoWidth") {
-    const w = Math.min(page.w - el.x, Math.max(el.w, prepared.neededWidth));
+    const w = Math.max(el.w, prepared.neededWidth);
     return w > el.w + 0.2 ? { w, h: el.h } : null;
   }
   return null;

@@ -290,6 +290,13 @@ function locate(page: Page, id: string) {
   return findElement(page.elements, id);
 }
 
+function cloneWithFreshIds(el: CanvasEl): CanvasEl {
+  const copy = clone(el);
+  copy.id = uid(copy.type === "group" ? "grp" : "el");
+  if (copy.children?.length) copy.children = copy.children.map(cloneWithFreshIds);
+  return copy;
+}
+
 /** True when `ancestorId` contains `id` at any depth. */
 function isDescendant(page: Page, ancestorId: string, id: string): boolean {
   const found = findElement(page.elements, ancestorId);
@@ -403,16 +410,12 @@ export const useEditor = create<EditorStore>((set, get) => {
     const s = get();
     const page = activePageOf(s);
     if (!page) return;
-    const size = pageSize(page);
     const byId = new Map(moves.map((m) => [m.id, m]));
     const walk = (list: CanvasEl[]): CanvasEl[] =>
       list.map((el) => {
         const move = byId.get(el.id);
         const next = move ? { ...el, x: move.x, y: move.y } : el;
         const withChildren = next.children?.length ? { ...next, children: walk(next.children) } : next;
-        // Re-clamp only the elements we actually moved; passing every element
-        // through `constrainElement` would round the untouched ones too.
-        if (move) constrainElement(withChildren, size);
         return withChildren;
       });
     set({ pages: s.pages.map((p) => (p.id === page.id ? { ...p, elements: walk(p.elements) } : p)) });
@@ -1027,7 +1030,7 @@ export const useEditor = create<EditorStore>((set, get) => {
       const found = locate(page, id);
       if (!found) return;
       const size = pageSize(page);
-      const box = resolveTextBox(found.el, size);
+      const box = resolveTextBox(found.el);
       if (!box) return;
       const next = mapElement(page, id, (el) => {
         const merged = { ...el, w: box.w, h: box.h };
@@ -1050,12 +1053,11 @@ export const useEditor = create<EditorStore>((set, get) => {
       // element, and copying one of its members would need a new parent.
       const topLevel = picked.filter((el) => page.elements.some((e) => e.id === el.id));
       if (!topLevel.length) return;
-      const size = pageSize(page);
       const copies = topLevel.map((el) => {
         const copy = clone(el);
         copy.id = uid("el");
-        copy.x = clamp(el.x + 6, 0, Math.max(0, size.w - el.w));
-        copy.y = clamp(el.y + 6, 0, Math.max(0, size.h - el.h));
+        copy.x = el.x + 6;
+        copy.y = el.y + 6;
         copy.z = nextZ(page);
         copy.name = `${el.name} نسخة`;
         return copy;
@@ -1084,7 +1086,6 @@ export const useEditor = create<EditorStore>((set, get) => {
       if (!s.clipboard) return;
       const page = activePageOf(s);
       if (!page) return;
-      const size = pageSize(page);
       const el = clone(s.clipboard);
       el.id = uid(el.type === "group" ? "grp" : "el");
       // A group's children keep their relative positions, but each needs a fresh
@@ -1093,10 +1094,10 @@ export const useEditor = create<EditorStore>((set, get) => {
         const reid = (list: CanvasEl[]) => list.forEach((c) => { c.id = uid("el"); if (c.children?.length) reid(c.children); });
         reid(el.children);
       }
-      el.x = clamp(el.x + 8, 0, Math.max(0, size.w - el.w));
-      el.y = clamp(el.y + 8, 0, Math.max(0, size.h - el.h));
+      el.x += 8;
+      el.y += 8;
       el.z = nextZ(page);
-      constrainElement(el, size);
+      constrainElement(el, pageSize(page));
       set({
         pages: s.pages.map((p) => (p.id === page.id ? { ...p, elements: [...p.elements, el] } : p)),
         selectedId: el.id,
@@ -1183,21 +1184,18 @@ export const useEditor = create<EditorStore>((set, get) => {
 
     copyElementToPage: (elId, pageId) => {
       const s = get();
-      const source = s.pages.find((p) => p.elements.some((e) => e.id === elId));
+      const source = s.pages.find((p) => Boolean(locate(p, elId)));
       const target = s.pages.find((p) => p.id === pageId);
-      const el = source?.elements.find((e) => e.id === elId);
+      const el = source ? locate(source, elId)?.el : undefined;
       if (!source || !target || !el) return;
-      const size = pageSize(target);
-      const copy = clone(el);
-      copy.id = uid("el");
+      const copy = cloneWithFreshIds(el);
       copy.z = nextZ(target);
-      copy.x = clamp(copy.x, 0, Math.max(0, size.w - copy.w));
-      copy.y = clamp(copy.y, 0, Math.max(0, size.h - copy.h));
-      constrainElement(copy, size);
+      constrainElement(copy, pageSize(target));
       set({
         pages: s.pages.map((p) => (p.id === target.id ? { ...p, elements: [...p.elements, copy] } : p)),
         activePageId: target.id,
         selectedId: copy.id,
+        selectedIds: [copy.id],
       });
       pushHistory();
       toast.success(`تم نقل العنصر إلى «${target.name}»`);
@@ -1234,7 +1232,7 @@ export const useEditor = create<EditorStore>((set, get) => {
         ...clone(page),
         id: uid("page"),
         name: `${page.name} نسخة`,
-        elements: page.elements.map((e) => ({ ...clone(e), id: uid("el") })),
+        elements: page.elements.map(cloneWithFreshIds),
       };
       const idx = s.pages.findIndex((p) => p.id === page.id);
       const pages = [...s.pages];
