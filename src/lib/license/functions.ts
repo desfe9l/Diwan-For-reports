@@ -35,17 +35,32 @@ import type {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Get client IP from request headers (best-effort). */
-function getClientIp(): string {
+/**
+ * Get client IP from request headers (best-effort). Server-side only.
+ *
+ * Uses TanStack Start's `getRequest()` — imported lazily via a cached promise
+ * so the module works in both dev and Vercel's ESM serverless output (a CJS
+ * `require` here throws ERR_REQUIRE_ESM, which silently collapsed every caller
+ * into one "unknown" rate-limit bucket).
+ */
+let getRequestRef: typeof import("@tanstack/react-start/server").getRequest | null = null;
+async function loadGetRequest() {
+  getRequestRef ??= (await import("@tanstack/react-start/server")).getRequest;
+  return getRequestRef;
+}
+function ipFromRequest(req: Request | null | undefined): string {
+  const h = req?.headers;
+  if (!h) return "unknown";
+  return (
+    h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    h.get("x-real-ip") ||
+    "unknown"
+  );
+}
+async function getClientIp(): Promise<string> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getRequest } = require("@tanstack/react-start/server") as typeof import("@tanstack/react-start/server");
-    const req = getRequest();
-    return (
-      req?.headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-      req?.headers?.get("x-real-ip") ??
-      "unknown"
-    );
+    const getRequest = await loadGetRequest();
+    return ipFromRequest(getRequest());
   } catch {
     return "unknown";
   }
@@ -63,7 +78,7 @@ function isAdmin(headers: Headers): boolean {
 export const activateLicenseFn = createServerFn({ method: "POST" })
   .validator((data: { key: string; userId?: string }) => data)
   .handler(async ({ data }): Promise<LicenseActivateResult> => {
-    const ip = getClientIp();
+    const ip = await getClientIp();
 
     // Rate limit: 5 attempts per minute per IP
     if (!checkRateLimit("license:activate", ip, 5, 60_000)) {
@@ -119,7 +134,7 @@ export const activateLicenseFn = createServerFn({ method: "POST" })
 export const validateLicenseFn = createServerFn({ method: "POST" })
   .validator((data: { key: string }) => data)
   .handler(async ({ data }): Promise<LicenseValidateResult> => {
-    const ip = getClientIp();
+    const ip = await getClientIp();
 
     if (!checkRateLimit("license:validate", ip, 20, 60_000)) {
       return { valid: false };
