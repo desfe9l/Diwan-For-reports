@@ -243,3 +243,49 @@ export async function reactivateLicense(id: string): Promise<License | null> {
   );
   return findLicenseById(id);
 }
+
+/** Extend a license's expiry date (admin). */
+export async function extendLicense(
+  id: string,
+  daysToAdd?: number,
+  newExpiresAt?: string,
+): Promise<License | null> {
+  const sql = await getSql();
+  const license = await findLicenseById(id);
+  if (!license) return null;
+  let targetExpiresAt: string | null = license.expiresAt;
+  if (newExpiresAt != null) {
+    targetExpiresAt = newExpiresAt;
+  } else if (daysToAdd != null && daysToAdd > 0) {
+    const base = license.expiresAt ? new Date(license.expiresAt) : new Date();
+    targetExpiresAt = new Date(base.getTime() + daysToAdd * 86400000).toISOString();
+  }
+  await sql.query(
+    `UPDATE licenses SET expires_at = COALESCE($2, expires_at), updated_at = now() WHERE id = $1`,
+    [id, targetExpiresAt],
+  );
+  return findLicenseById(id);
+}
+
+/** Assign a license to a user (admin). */
+export async function assignLicense(
+  licenseId: string,
+  userId: string,
+  activate = true,
+): Promise<License | null> {
+  const sql = await getSql();
+  const license = await findLicenseById(licenseId);
+  if (!license) return null;
+  if (activate) {
+    await sql.query(
+      `UPDATE licenses SET user_id = $2, activated_at = COALESCE(activated_at, now()), activation_count = activation_count + 1, updated_at = now() WHERE id = $1`,
+      [licenseId, userId],
+    );
+  } else {
+    await sql.query(
+      `UPDATE licenses SET user_id = $2, updated_at = now() WHERE id = $1`,
+      [licenseId, userId],
+    );
+  }
+  return findLicenseById(licenseId);
+}

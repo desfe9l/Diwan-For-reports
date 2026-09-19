@@ -18,6 +18,8 @@ import {
   reactivateLicense as dbReactivate,
   updateLicense as dbUpdate,
   findLicensesByUserId,
+  extendLicense,
+  assignLicense,
 } from "./server";
 import { checkRateLimit } from "./rate-limit";
 import { LICENSE_ENTITLEMENTS } from "./types";
@@ -244,17 +246,36 @@ export const adminReactivateLicenseFn = createServerFn({ method: "POST" })
 
     const license = await dbReactivate(data.licenseId);
     return { error: null as string | null, license };
-  });
-
-// ── Admin: Update License ─────────────────────────────────────────────────
-
+  });// ── Admin: Update License ─────────────────────────────────────────────────
 export const adminUpdateLicenseFn = createServerFn({ method: "POST" })
   .validator((data: { adminSecret: string; licenseId: string; updates: AdminLicenseUpdate }) => data)
   .handler(async ({ data }) => {
     if (!data.adminSecret || !isAdmin(new Headers({ "x-admin-secret": data.adminSecret }))) {
-      return { error: "غير مصرح." };
+      return { error: "غير مصرح.", license: null as License | null };
     }
 
     const license = await dbUpdate(data.licenseId, data.updates);
-    return { license };
+    return { error: null as string | null, license };
+  });
+
+// ── Admin: Extend License ─────────────────────────────────────────────────
+export const extendLicenseFn = createServerFn({ method: "POST" })
+  .validator((data: { adminSecret: string; licenseId: string; daysToAdd?: number; newExpiresAt?: string }) => data)
+  .handler(async ({ data }) => {
+    if (!data.adminSecret || !isAdmin(new Headers({ "x-admin-secret": data.adminSecret }))) {
+      return { error: "غير مصرح.", license: null as License | null };
+    }
+    const license = await extendLicense(data.licenseId, data.daysToAdd, data.newExpiresAt);
+    return { error: null as string | null, license };
+  });
+
+// ── Admin: Assign License to User ────────────────────────────────────────
+export const assignLicenseFn = createServerFn({ method: "POST" })
+  .validator((data: { adminSecret: string; licenseId: string; userId: string; activate?: boolean }) => data)
+  .handler(async ({ data }) => {
+    if (!data.adminSecret || !isAdmin(new Headers({ "x-admin-secret": data.adminSecret }))) {
+      return { error: "غير مصرح.", license: null as License | null };
+    }
+    const license = await assignLicense(data.licenseId, data.userId, data.activate ?? true);
+    return { error: null as string | null, license };
   });
